@@ -1,0 +1,6 @@
+ktor:
+    application:
+        modules:
+            - uk.ac.comp2850.flightbooking.ApplicationKt.module
+    deployment:
+        port: 8080
