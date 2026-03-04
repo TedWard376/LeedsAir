@@ -1,36 +1,33 @@
-.gradle
-build/
-!gradle/wrapper/gradle-wrapper.jar
-!**/src/main/**/build/
-!**/src/test/**/build/
+# VS Code
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
 
-### STS ###
-.apt_generated
-.classpath
-.factorypath
-.project
-.settings
-.springBeans
-.sts4-cache
-bin/
-!**/src/main/**/bin/
-!**/src/test/**/bin/
+# OS
+.DS_Store
+Thumbs.db
 
-### IntelliJ IDEA ###
-.idea
-*.iws
-*.iml
-*.ipr
-out/
-!**/src/main/**/out/
-!**/src/test/**/out/
+# Backend (Gradle/Kotlin)
+backend/.gradle/
+backend/build/
+backend/out/
+backend/.kotlin/
+*.class
 
-### NetBeans ###
-/nbproject/private/
-/nbbuild/
-/dist/
-/nbdist/
-/.nb-gradle/
+# Frontend (Vite/Node)
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
 
-### VS Code ###
-.vscode/
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Env / secrets
+.env
+.env.*
+backend/.env
+frontend/.env
+frontend/.env.*
