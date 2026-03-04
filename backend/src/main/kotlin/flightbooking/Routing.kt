@@ -1,4 +1,4 @@
-package uk.ac.comp2850.flightbooking
+package flightbooking
 
 import io.ktor.server.application.*
 import io.ktor.server.response.*
