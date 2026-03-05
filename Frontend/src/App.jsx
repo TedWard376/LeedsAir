@@ -1,35 +1,112 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import { useState } from "react";
+import { AuthProvider } from "./context/AuthContext";
+import { Navbar } from "./components/Navbar";
 
-function App() {
-  const [count, setCount] = useState(0)
+// Pages
+import { HomePage }           from "./pages/HomePage";
+import { FlightResultsPage }  from "./pages/FlightResultsPage";
+import { BookingsPage }       from "./pages/BookingsPage";
+import { ManageBookingPage }  from "./pages/ManageBookingPage";
+import { LoginPage }          from "./pages/LoginPage";
+import { RegisterPage }       from "./pages/RegisterPage";
+import { AccountPage }        from "./pages/AccountPage";
+import { RewardsPage }        from "./pages/RewardsPage";
+import { ComplaintPage }      from "./pages/ComplaintPage";
+import { CheckInPage }        from "./pages/CheckInPage";
+import { AdminLoginPage }     from "./pages/AdminLoginPage";
+import { AdminDashboardPage } from "./pages/AdminDashboardPage";
+import { BookingFlowPage }    from "./pages/BookingFlowPage";
+
+import "./styles.css";
+
+function AppInner() {
+  const [page,             setPage]             = useState("home");
+  const [searchParams,     setSearchParams]     = useState(null);
+  const [selectedFlight,   setSelectedFlight]   = useState(null);
+  const [confirmedBooking, setConfirmedBooking] = useState(null);
+
+  function handleSearch(params) {
+    setSearchParams(params);
+    setPage("results");
+  }
+
+  function handleSelectFlight(flightWithFare) {
+    setSelectedFlight(flightWithFare);
+    setPage("booking-flow");
+  }
+
+  function handleBookingComplete(booking) {
+    setConfirmedBooking(booking);
+    setSelectedFlight(null);
+    setSearchParams(null);
+    setPage("home");
+  }
+
+  function renderPage() {
+    switch (page) {
+      case "home":
+        return (
+          <HomePage
+            onSearch={handleSearch}
+            confirmedBooking={confirmedBooking}
+            onDismissConfirmation={() => setConfirmedBooking(null)}
+          />
+        );
+      case "results":
+        return (
+          <FlightResultsPage
+            searchParams={searchParams}
+            onNavigate={setPage}
+            onSelectFlight={handleSelectFlight}
+          />
+        );
+      case "booking-flow":
+        return (
+          <BookingFlowPage
+            flight={selectedFlight}
+            onNavigate={setPage}
+            onComplete={handleBookingComplete}
+          />
+        );
+      case "bookings":        return <BookingsPage />;
+      case "manage":          return <ManageBookingPage />;
+      case "checkin":         return <CheckInPage />;
+      case "login":           return <LoginPage onNavigate={setPage} />;
+      case "register":        return <RegisterPage onNavigate={setPage} />;
+      case "account":         return <AccountPage onNavigate={setPage} />;
+      case "rewards":         return <RewardsPage onNavigate={setPage} />;
+      case "complaint":       return <ComplaintPage />;
+      case "admin-login":     return <AdminLoginPage onNavigate={setPage} />;
+      case "admin-dashboard": return <AdminDashboardPage onNavigate={setPage} />;
+      default:                return <HomePage onSearch={handleSearch} />;
+    }
+  }
+
+  const isAdminPage = page === "admin-login" || page === "admin-dashboard";
 
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.jsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
-  )
+    <div className="app">
+      {!isAdminPage && <Navbar activePage={page} onNavigate={setPage} />}
+      <main className="main-content">{renderPage()}</main>
+      {!isAdminPage && (
+        <footer className="footer">
+          <div className="footer-inner">
+            <span>© 2025 LeedsAir. All rights reserved.</span>
+            <div className="footer-links">
+              <button className="footer-link" onClick={() => setPage("complaint")}>Submit Complaint</button>
+              <button className="footer-link" onClick={() => setPage("admin-login")}>Staff Login</button>
+            </div>
+          </div>
+        </footer>
+      )}
+    </div>
+  );
 }
 
-export default App
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppInner />
+    </AuthProvider>
+  );
+}
