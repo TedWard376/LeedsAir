@@ -1,14 +1,31 @@
 # COMP2850 Flight Booking System
 
-This is the project structure:
-- `build.gradle.kts`: Main build config (plugins, dependencies, toolchain)
-- `settings.gradle.kts`: Project name and repository setup
-- `gradle/libs.versions.toml`: Centralized dependency versions
-- `src/main/kotlin/Application.kt`: Ktor entry point (`main`) and app module
-- `src/main/kotlin/Routing.kt`: Current route registration location
-- `src/main/resources/application.yaml`: Ktor runtime config (module + port)
-- `src/main/resources/logback.xml`: Logging configuration
+Monorepo layout:
+- `backend/` -> Ktor backend (runs with Gradle)
+- `frontend/` -> React frontend (runs with Vite)
 
-## Where to add code
-- Backend Kotlin code: `src/main/kotlin/`
+## Backend (Gradle)
+Files are now under `backend/`:
+- `backend/build.gradle.kts`
+- `backend/settings.gradle.kts`
+- `backend/src/main/kotlin/...`
+- `backend/src/main/resources/...`
 
+Run backend:
+```powershell
+cd backend
+.\gradlew run
+```
+
+## Frontend (Vite)
+Place your frontend app in `frontend/`.
+Typical run commands (once your teammate scaffolds it):
+```powershell
+cd frontend
+npm install
+npm run dev
+```
+
+## Current status
+- Backend has Supabase/Exposed wiring in place.
+- Frontend folder is ready for the Vite app.
