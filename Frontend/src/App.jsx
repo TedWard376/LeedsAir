@@ -31,7 +31,8 @@ function AppInner() {
   }
 
   function handleSelectFlight(flightWithFare) {
-    setSelectedFlight(flightWithFare);
+    // Attach searchParams so BookingFlowPage knows passenger counts
+    setSelectedFlight({ ...flightWithFare, searchParams });
     setPage("booking-flow");
   }
 
