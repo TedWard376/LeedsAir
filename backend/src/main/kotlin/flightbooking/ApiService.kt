@@ -166,7 +166,8 @@ fun getNearestAirport(userCoordinate: Pair<Double, Double>) : Airport{ //Returns
     }
     return nearestAirport
 }
-
+/*
 suspend fun main() {
     println(getNearestAirport(getUserCoordinate("104.174.125.138")).name)
 }
+*/
