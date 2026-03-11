@@ -32,5 +32,12 @@ backend/.env
 frontend/.env
 frontend/.env.*
 
-#IDEA
+# Frontend (Vite / React)
+node_modules/
+dist/
+.pnp/
 .idea/
+
+# optionally ignore package lock or yarn lock if not committed
+# package-lock.json
+# yarn.lock
