@@ -4,6 +4,7 @@ import  io.ktor.client.*
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
+import io.ktor.http.HttpStatusCode
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -139,8 +140,12 @@ val Airports = listOf(
 
 suspend fun getUserCoordinate(userIP : String) : Pair<Double, Double>{ //Returns user coordinate depends on user IP
     val response = client.get("https://ipwho.is/$userIP")
-    val responseJSON = Json.decodeFromString<IpWhoIsResponse>(response.bodyAsText())
-    return Pair(responseJSON.latitude, responseJSON.longitude)
+    if(response.status == HttpStatusCode(200, "OK")) {
+        val responseJSON = Json.decodeFromString<IpWhoIsResponse>(response.bodyAsText())
+        return Pair(responseJSON.latitude, responseJSON.longitude)
+    } else {
+        return Pair(0.0, 0.0)
+    }
 }
 
 fun calculateDistance(userCoordinate: Pair<Double, Double>, airportCoordinate: Pair<Double, Double>) : Double { //Calculate distance between user and aiport
@@ -161,8 +166,7 @@ fun getNearestAirport(userCoordinate: Pair<Double, Double>) : Airport{ //Returns
     }
     return nearestAirport
 }
-/*
+
 suspend fun main() {
     println(getNearestAirport(getUserCoordinate("104.174.125.138")).name)
 }
- */
