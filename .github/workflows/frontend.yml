@@ -1,0 +1,52 @@
+name: Frontend CI
+
+on:
+  push:
+    branches: [ main, develop, feature/* ]
+    paths:
+      - 'Frontend/**'
+      - '.github/workflows/frontend.yml'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'Frontend/**'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+          cache-dependency-path: 'Frontend/package-lock.json'
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: Frontend
+
+      - name: Lint code
+        run: npm run lint
+        working-directory: Frontend
+        continue-on-error: true
+
+      - name: Build
+        run: npm run build
+        working-directory: Frontend
+
+      - name: Check build output
+        run: |
+          if [ ! -d "Frontend/dist" ]; then
+            echo "Build failed: dist directory not created"
+            exit 1
+          fi
+          echo "✓ Build successful"

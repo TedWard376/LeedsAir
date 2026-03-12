@@ -125,3 +125,19 @@ cd backend
 | `Frontend/src/services/api.js` | All API calls; shows expected request/response format |
 | `Frontend/src/hooks/useFlights.js` | How flights are fetched & cached |
 | `backend/src/main/resources/db/migration/V1__init_schema.sql` | Database schema |
+
+## CI/CD Pipeline
+
+This project uses **GitHub Actions** for automated testing and building.
+
+### Workflows
+- **Frontend CI**: Lints & builds React/Vite on every push to `Frontend/`
+- **Backend CI**: Builds & tests Kotlin/Gradle on every push to `backend/`
+- **Integration Tests**: Runs full-stack tests after both builds succeed
+
+### Getting Started with CI/CD
+1. Push code to a feature branch
+2. Create a PR to `develop` or `main`
+3. GitHub Actions runs automatically (see Actions tab)
+4. Merge once all checks pass
+
