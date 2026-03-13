@@ -167,7 +167,8 @@ suspend fun getNearestAirport(userIP : String) : Airport{ //Returns nearest airp
     }
     return nearestAirport
 }
-
+/*
 suspend fun main() {
     println(getNearestAirport("104.174.125.138").name)
 }
+*/
