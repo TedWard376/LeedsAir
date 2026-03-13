@@ -41,6 +41,3 @@ dist/
 # optionally ignore package lock or yarn lock if not committed
 # package-lock.json
 # yarn.lock
-
-#IDEA
-.idea/
