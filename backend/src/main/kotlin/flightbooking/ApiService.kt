@@ -154,8 +154,9 @@ fun calculateDistance(userCoordinate: Pair<Double, Double>, airportCoordinate: P
     return dx * dx + dy * dy
 }
 
-fun getNearestAirport(userCoordinate: Pair<Double, Double>) : Airport{ //Returns nearest airport from user
+suspend fun getNearestAirport(userIP : String) : Airport{ //Returns nearest airport from user
     var nearestAirport = Airports[0]
+    val userCoordinate = getUserCoordinate(userIP)
     var nearestAirportDistance = calculateDistance(userCoordinate, Pair(nearestAirport.latitude_deg, nearestAirport.longitude_deg))
     for(airport in Airports) {
         val airportDistance = calculateDistance(userCoordinate, Pair(airport.latitude_deg, airport.longitude_deg))
@@ -166,8 +167,7 @@ fun getNearestAirport(userCoordinate: Pair<Double, Double>) : Airport{ //Returns
     }
     return nearestAirport
 }
-/*
+
 suspend fun main() {
-    println(getNearestAirport(getUserCoordinate("104.174.125.138")).name)
+    println(getNearestAirport("104.174.125.138").name)
 }
-*/
