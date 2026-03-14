@@ -41,6 +41,10 @@ jobs:
         run: npm run build
         working-directory: Frontend
 
+      - name: Run tests
+        run: npm run test
+        working-directory: Frontend
+
       - name: Check build output
         run: |
           if [ ! -d "Frontend/dist" ]; then
