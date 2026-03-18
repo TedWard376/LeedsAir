@@ -34,23 +34,12 @@ object DatabaseFactory {
             env = "DB_PASSWORD",
             displayName = "database.password"
         )
-        val maximumPoolSize = databaseConfig.propertyOrNull("maximumPoolSize")?.getString()?.toIntOrNull()
+        val configuredMaximumPoolSize = databaseConfig.propertyOrNull("maximumPoolSize")?.getString()?.toIntOrNull()
             ?: System.getenv("DB_MAX_POOL_SIZE")?.toIntOrNull()
             ?: 10
 
-        val hikari = HikariConfig().apply {
-            this.jdbcUrl = jdbcUrl
-            this.driverClassName = driverClassName
-            this.username = username
-            this.password = password
-            this.maximumPoolSize = maximumPoolSize
-            isAutoCommit = false
-            transactionIsolation = "TRANSACTION_REPEATABLE_READ"
-            validate()
-        }
-
-        val dataSource = HikariDataSource(hikari)
-        Database.connect(dataSource)
+        val isSupabasePooler = jdbcUrl.contains("pooler.", ignoreCase = true)
+        val maximumPoolSize = if (isSupabasePooler) 1 else configuredMaximumPoolSize.coerceAtLeast(2)
 
         Flyway.configure()
             .dataSource(jdbcUrl, username, password)
@@ -59,6 +48,21 @@ object DatabaseFactory {
             .baselineVersion(MigrationVersion.fromVersion("0"))
             .load()
             .migrate()
+
+        val hikari = HikariConfig().apply {
+            this.jdbcUrl = jdbcUrl
+            this.driverClassName = driverClassName
+            this.username = username
+            this.password = password
+            this.maximumPoolSize = maximumPoolSize
+            this.minimumIdle = 1
+            isAutoCommit = false
+            transactionIsolation = "TRANSACTION_REPEATABLE_READ"
+            validate()
+        }
+
+        val dataSource = HikariDataSource(hikari)
+        Database.connect(dataSource)
     }
 
     private fun readString(
