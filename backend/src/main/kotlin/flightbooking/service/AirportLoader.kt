@@ -21,7 +21,9 @@ object AirportLoader {
         )
         return reader.use {
             CSVParser.parse(it, CSVFormat.DEFAULT.builder().setHeader().setSkipHeaderRecord(true).build()).use { parser ->
-                parser.map { record ->
+                parser.mapNotNull { record ->
+                    val iataCode = record.get("iata_code").trim()
+                    if (iataCode.isBlank()) return@mapNotNull null
                     val name = record.get("name").ifBlank { record.get("ident") }
                     val ident = record.get("ident")
                     Airport(
@@ -32,7 +34,7 @@ object AirportLoader {
                         iso_country = record.get("iso_country").ifBlank { "XX" },
                         municipality = record.get("municipality"),
                         icao_code = record.get("icao_code").ifBlank { ident },
-                        iata_code = record.get("iata_code").ifBlank { ident }
+                        iata_code = iataCode.ifBlank { ident }
                     )
                 }
             }
