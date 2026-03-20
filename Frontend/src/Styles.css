@@ -2446,3 +2446,51 @@ body {
 .osb-arrow { font-size: 1rem; color: var(--muted); }
 .osb-meta  { flex: 1; font-size: .85rem; color: var(--muted); min-width: 0; }
 .osb-price { font-size: 1.1rem; font-weight: 800; color: var(--sky); flex-shrink: 0; }
+
+/* ── Multi-passenger tabs (details + seat steps) ─────────── */
+.pax-tabs {
+  display: flex;
+  gap: .5rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.25rem;
+  padding-bottom: 1rem;
+  border-bottom: 1.5px solid var(--border);
+}
+.pax-tab {
+  padding: .45rem 1rem;
+  border-radius: 20px;
+  border: 1.5px solid var(--border);
+  background: var(--white);
+  font-size: .83rem;
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--muted);
+  transition: all .15s;
+  white-space: nowrap;
+}
+.pax-tab:hover { border-color: var(--sky); color: var(--sky); }
+.pax-tab.active { background: var(--sky); border-color: var(--sky); color: var(--white); }
+.pax-tab.pax-tab--done { border-color: #6ee7b7; color: #065f46; background: #ecfdf5; }
+.pax-tab.pax-tab--done.active { background: #059669; border-color: #059669; color: var(--white); }
+
+.pax-tab-header {
+  display: flex;
+  align-items: baseline;
+  gap: .75rem;
+  margin-bottom: 1rem;
+}
+.pax-tab-name { margin: 0; font-size: 1.05rem; font-weight: 700; color: var(--navy); }
+.pax-tab-type { font-size: .8rem; color: var(--muted); font-weight: 500; }
+
+.form-label-note { font-weight: 400; color: var(--muted); font-size: .78rem; text-transform: none; letter-spacing: 0; }
+
+/* ── Passenger review rows ───────────────────────────────── */
+.review-pax-row {
+  padding: .65rem 0;
+  border-bottom: 1px solid var(--off);
+}
+.review-pax-row:last-child { border-bottom: none; }
+.review-pax-name { font-size: .92rem; margin-bottom: .2rem; }
+.review-pax-seat { color: var(--sky); font-weight: 600; }
+.review-pax-no-seat { color: var(--muted); font-weight: 400; font-style: italic; }
+.review-pax-details { font-size: .82rem; color: var(--muted); }

@@ -17,7 +17,7 @@ import { AdminLoginPage }     from "./pages/AdminLoginPage";
 import { AdminDashboardPage } from "./pages/AdminDashboardPage";
 import { BookingFlowPage }    from "./pages/BookingFlowPage";
 
-import "./styles.css";
+import "./Styles.css";
 
 function AppInner() {
   const [page,             setPage]             = useState("home");
@@ -31,7 +31,8 @@ function AppInner() {
   }
 
   function handleSelectFlight(flightWithFare) {
-    setSelectedFlight(flightWithFare);
+    // Attach searchParams so BookingFlowPage knows passenger counts
+    setSelectedFlight({ ...flightWithFare, searchParams });
     setPage("booking-flow");
   }
 
