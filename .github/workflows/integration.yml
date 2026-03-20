@@ -60,7 +60,7 @@ jobs:
       - name: Run frontend tests
         run: npm test -- --run
         working-directory: Frontend
-        continue-on-error: true
+        continue-on-error: false
 
       - name: Upload coverage
         uses: codecov/codecov-action@v3
