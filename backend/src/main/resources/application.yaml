@@ -11,3 +11,6 @@ database:
     password: ${?DB_PASSWORD}
     driverClassName: org.postgresql.Driver
     maximumPoolSize: 10
+
+seed:
+    runOnStartup: ${?RUN_CSV_SEED}
