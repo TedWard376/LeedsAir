@@ -17,7 +17,7 @@ import { AdminLoginPage }     from "./pages/AdminLoginPage";
 import { AdminDashboardPage } from "./pages/AdminDashboardPage";
 import { BookingFlowPage }    from "./pages/BookingFlowPage";
 
-import "./styles.css";
+import "./Styles.css";
 
 function AppInner() {
   const [page,             setPage]             = useState("home");
