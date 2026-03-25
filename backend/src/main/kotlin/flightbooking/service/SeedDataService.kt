@@ -17,11 +17,8 @@ import flightbooking.db.table.AirportsTable.city
 import flightbooking.db.table.AirportsTable.name
 import flightbooking.db.table.AirportsTable.country
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
-import org.jetbrains.exposed.sql.SortOrder
 import org.jetbrains.exposed.sql.insert
-import org.jetbrains.exposed.sql.insertAndGetId
 import org.jetbrains.exposed.sql.selectAll
-import org.jetbrains.exposed.sql.select
 import org.jetbrains.exposed.sql.transactions.transaction
 import java.math.BigDecimal
 import java.math.RoundingMode
@@ -67,7 +64,7 @@ object SeedDataService {
 
     private fun seedFlights() {
         val airportIndex = AirportsTable.selectAll()
-            .associate { row -> row[code] to row[id].value }
+            .associate { row -> row[code] to row[id] }
         val defaultAircraftId = getDefaultAircraftId()
 
         for (row in FlightScheduleLoader.loadFromCsv()) {
@@ -107,12 +104,17 @@ object SeedDataService {
             .where { AircraftTable.model eq "Standard" }
             .singleOrNull()
 
-        if (existing != null) return existing[AircraftTable.id].value
+        if (existing != null) return existing[AircraftTable.id]
 
-        return AircraftTable.insertAndGetId {
+        AircraftTable.insert {
             it[AircraftTable.model] = "Standard"
             it[AircraftTable.totalSeats] = 180
-        }.value
+        }
+
+        return AircraftTable
+            .selectAll()
+            .where { AircraftTable.model eq "Standard" }
+            .single()[AircraftTable.id]
     }
 }
 
