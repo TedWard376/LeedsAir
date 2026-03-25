@@ -1,6 +1,5 @@
-package flightbooking
+package flightbooking.service
 
-import flightbooking.service.AirportLoader
 import io.ktor.client.*
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.request.*

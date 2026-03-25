@@ -1,5 +1,6 @@
 package flightbooking
 
+import flightbooking.service.BookingService
 import flightbooking.service.HomeService
 import io.ktor.server.application.*
 import io.ktor.server.response.*
@@ -27,8 +28,9 @@ fun Application.configureRouting() {
             val adults = call.request.queryParameters["adults"]
             val children = call.request.queryParameters["children"]
             val infants = call.request.queryParameters["infants"]
-            val response = listOf<String>("""{"id":"FL001","flightNumber":"LS101","airline":"LeedsAir","from":"${from.toString()}","to":"${to.toString()}","departureTime":"07:30","arrivalTime":"08:45","departureDate":"${departureDate.toString()}","duration":"1h 15m","stops":0,"price":89,"availableSeats":45}""")
-            call.respond(response.toString())
+            //val response = listOf<String>("""{"id":"FL001","flightNumber":"LS101","airline":"LeedsAir","from":"${from.toString()}","to":"${to.toString()}","departureTime":"07:30","arrivalTime":"08:45","departureDate":"${departureDate.toString()}","duration":"1h 15m","stops":0,"price":89,"availableSeats":45}""")
+            val response = BookingService.getFlights("$from", "$to", "$departureDate")
+            call.respond(response)
         }
     }
 }
