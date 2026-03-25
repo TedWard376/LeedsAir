@@ -1,6 +1,5 @@
-package flightbooking
+package flightbooking.service
 
-import flightbooking.service.AirportLoader
 import io.ktor.client.*
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.request.*
@@ -48,7 +47,7 @@ suspend fun getUserCoordinate(userIP : String) : Pair<Double, Double>{ //Returns
     }
 }
 
-fun calculateDistance(userCoordinate: Pair<Double, Double>, airportCoordinate: Pair<Double, Double>) : Double { //Calculate distance between user and aiport
+fun calculateDistance(userCoordinate: Pair<Double, Double>, airportCoordinate: Pair<Double, Double>) : Double { //Calculate distance between user and airport
     val dx = userCoordinate.first - airportCoordinate.first
     val dy = userCoordinate.second - airportCoordinate.second
     return dx * dx + dy * dy

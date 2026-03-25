@@ -1,6 +1,5 @@
 package flightbooking.service
 
-import flightbooking.Airport
 import org.apache.commons.csv.CSVFormat
 import org.apache.commons.csv.CSVParser
 import java.io.InputStreamReader
