@@ -2,7 +2,7 @@ const BASE_URL = "/api";
 
 // ── Helpers ──────────────────────────────────────────────
 async function request(path, options = {}) {
-  const token = localStorage.getItem("token");
+  const token = localStorage.getItem("adminToken") || localStorage.getItem("token");
   const headers = { "Content-Type": "application/json", ...options.headers };
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
