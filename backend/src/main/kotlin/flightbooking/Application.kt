@@ -10,6 +10,12 @@ fun main(args: Array<String>) {
 
 fun Application.module() {
     DatabaseFactory.init(environment.config)
-    SeedDataService.seedInitialData()
+    if (shouldRunSeed()) {
+        SeedDataService.seedAll()
+    }
     configureRouting()
 }
+
+private fun Application.shouldRunSeed(): Boolean =
+    environment.config.propertyOrNull("seed.runOnStartup")?.getString()?.toBooleanStrictOrNull() == true ||
+        System.getenv("RUN_CSV_SEED")?.toBooleanStrictOrNull() == true

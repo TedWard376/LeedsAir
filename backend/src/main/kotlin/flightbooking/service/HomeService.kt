@@ -1,9 +1,7 @@
 package flightbooking.service
 
 import flightbooking.db.*
-import flightbooking.Airport as ApiAirport
-import flightbooking.Airports
-import flightbooking.getNearestAirport
+import flightbooking.service.Airport as ApiAirport
 
 object HomeService {
     private fun ApiAirport.toDbAirport(): Airport = Airport(
