@@ -1,10 +1,8 @@
 package flightbooking
 
 import flightbooking.service.*
-import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.*
-import io.ktor.server.request.receive
 import io.ktor.server.request.receiveText
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
