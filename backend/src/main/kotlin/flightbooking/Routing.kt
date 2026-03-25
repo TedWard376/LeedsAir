@@ -2,6 +2,7 @@ package flightbooking
 
 import flightbooking.service.*
 import io.ktor.http.ContentType
+import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.*
 import io.ktor.server.request.receive
 import io.ktor.server.request.receiveText
@@ -49,8 +50,8 @@ fun Application.configureRouting() {
 
         post("/api/bookings") {
             val request = call.receiveText()
-            BookingService.newBooking(request)
-            call.respondText("OK")
+            val response = BookingService.newBooking(request)
+            call.respond(HttpStatusCode.Created, response)
         }
     }
 }
