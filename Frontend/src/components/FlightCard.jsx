@@ -1,10 +1,7 @@
+import { stopsLabel } from "../Utils.js";
+
 export function FlightCard({ flight, onSelect }) {
-  const stopsLabel =
-    flight.stops === 0
-      ? "Direct"
-      : flight.stops === 1
-      ? "1 Stop"
-      : `${flight.stops} Stops`;
+  const stops = stopsLabel(flight.stops);
 
   return (
     <div className="flight-card">
@@ -25,7 +22,7 @@ export function FlightCard({ flight, onSelect }) {
             <div className="line" />
             <span className="dot" />
           </div>
-          <span className="stops-label">{stopsLabel}</span>
+          <span className="stops-label">{stops}</span>
         </div>
         <div className="time-block">
           <span className="time">{flight.arrivalTime}</span>
