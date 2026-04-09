@@ -35,15 +35,11 @@ object SeedDataService {
         transaction {
             val airportCount = AirportsTable.selectAll().count()
             println("SeedDataService: airports before seed = $airportCount")
-            if (airportCount == 0L) {
-                seedAirports()
-            }
+            seedAirports()
 
             val flightCount = FlightsTable.selectAll().count()
             println("SeedDataService: flights before seed = $flightCount")
-            if (flightCount == 0L) {
-                seedFlights()
-            }
+            seedFlights()
 
             val finalAirportCount = AirportsTable.selectAll().count()
             val finalFlightCount = FlightsTable.selectAll().count()
@@ -60,11 +56,19 @@ object SeedDataService {
             .map { it.trim().uppercase() }
             .filter { it.isNotBlank() }
             .toSet()
+        val existingCodes = AirportsTable.selectAll()
+            .map { it[code].trim().uppercase() }
+            .toHashSet()
         val seenCodes = HashSet<String>()
         var inserted = 0
+        var skippedExisting = 0
         for (airport in AirportLoader.loadFromCsv()) {
             val codeValue = airport.iata_code.trim().uppercase()
             if (codeValue.isBlank() || codeValue !in requiredCodes || !seenCodes.add(codeValue)) {
+                continue
+            }
+            if (codeValue in existingCodes) {
+                skippedExisting++
                 continue
             }
 
@@ -74,17 +78,37 @@ object SeedDataService {
                 it[city] = airport.municipality
                 it[country] = airport.iso_country
             }
+            existingCodes.add(codeValue)
             inserted++
         }
-        println("SeedDataService: inserted $inserted airports from CSV for ${requiredCodes.size} required airport codes")
+        val missingRequired = requiredCodes - existingCodes
+        println(
+            "SeedDataService: inserted $inserted airports, skipped $skippedExisting already present, " +
+                "missing required airport codes=${missingRequired.size}"
+        )
+        if (missingRequired.isNotEmpty()) {
+            println("SeedDataService: missing airport codes: ${missingRequired.sorted().joinToString(", ")}")
+        }
     }
 
     private fun seedFlights() {
         val airportIndex = AirportsTable.selectAll()
             .associate { row -> row[code] to row[id] }
         val defaultAircraftId = getDefaultAircraftId()
+        val existingFlightKeys = FlightsTable.selectAll()
+            .map { row ->
+                listOf(
+                    row[flightNumber],
+                    row[departureAirportId].toString(),
+                    row[arrivalAirportId].toString(),
+                    row[departureTime].toString(),
+                    row[arrivalTime].toString()
+                ).joinToString("|")
+            }
+            .toHashSet()
         var inserted = 0
         var skippedMissingAirport = 0
+        var skippedExisting = 0
 
         for (row in FlightScheduleLoader.loadFromCsv()) {
             val departureId = airportIndex[row.from]
@@ -95,8 +119,23 @@ object SeedDataService {
             }
 
             val scheduledDeparture = parseDateTime(row.departureTime, LocalDate.now())
-            val scheduledArrival = parseDateTime(row.arrivalTime, scheduledDeparture.toLocalDate()).let {
-                if (it <= scheduledDeparture) it.plusDays(1) else it
+            val arrivalParts = parseTimeParts(row.arrivalTime)
+            val scheduledArrival = LocalDateTime.of(
+                scheduledDeparture.toLocalDate().plusDays(arrivalParts.dayOffset.toLong()),
+                arrivalParts.time
+            ).let {
+                if (arrivalParts.dayOffset == 0 && it <= scheduledDeparture) it.plusDays(1) else it
+            }
+            val flightKey = listOf(
+                row.flightNumber,
+                departureId.toString(),
+                arrivalId.toString(),
+                scheduledDeparture.toString(),
+                scheduledArrival.toString()
+            ).joinToString("|")
+            if (flightKey in existingFlightKeys) {
+                skippedExisting++
+                continue
             }
             val price = row.price.toBigDecimalOrNull()?.setScale(2, RoundingMode.HALF_UP) ?: BigDecimal("199.00")
 
@@ -110,14 +149,29 @@ object SeedDataService {
                 it[basePrice] = price
                 it[status] = "scheduled"
             }
+            existingFlightKeys.add(flightKey)
             inserted++
         }
-        println("SeedDataService: inserted $inserted flights from CSV, skipped $skippedMissingAirport because airport codes were missing")
+        println(
+            "SeedDataService: inserted $inserted flights, skipped $skippedExisting already present, " +
+                "skipped $skippedMissingAirport because airport codes were missing"
+        )
     }
 
     private fun parseDateTime(timeText: String, fallbackDate: LocalDate): LocalDateTime {
-        val parsed = LocalTime.parse(timeText, timeFormatter)
-        return LocalDateTime.of(fallbackDate, parsed)
+        val parsed = parseTimeParts(timeText)
+        return LocalDateTime.of(fallbackDate.plusDays(parsed.dayOffset.toLong()), parsed.time)
+    }
+
+    private fun parseTimeParts(timeText: String): ParsedTime {
+        val normalized = timeText.trim()
+        val parts = normalized.split(Regex("\\s+"))
+        val time = LocalTime.parse(parts.first(), timeFormatter)
+        val dayOffset = parts.getOrNull(1)
+            ?.removePrefix("+")
+            ?.toIntOrNull()
+            ?: 0
+        return ParsedTime(time = time, dayOffset = dayOffset)
     }
 
     private fun getDefaultAircraftId(): Int {
@@ -138,5 +192,10 @@ object SeedDataService {
             .where { AircraftTable.model eq "Standard" }
             .single()[AircraftTable.id]
     }
+
+    private data class ParsedTime(
+        val time: LocalTime,
+        val dayOffset: Int
+    )
 }
 
