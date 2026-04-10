@@ -1,5 +1,6 @@
 package flightbooking
 
+import flightbooking.service.FlightService
 import flightbooking.service.HomeService
 import io.ktor.server.application.*
 import io.ktor.server.response.*
@@ -15,6 +16,16 @@ fun Application.configureRouting() {
         get("/api/home") {
             val userIp = call.request.local.remoteAddress
             call.respond(HomeService.getHomeData(userIp))
+        }
+
+        get("/api/flights") {
+            call.respond(
+                FlightService.searchFlights(
+                    from = call.request.queryParameters["from"],
+                    to = call.request.queryParameters["to"],
+                    departureDate = call.request.queryParameters["departureDate"]
+                )
+            )
         }
     }
 }
