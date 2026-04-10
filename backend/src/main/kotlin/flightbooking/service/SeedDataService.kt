@@ -135,6 +135,16 @@ object SeedDataService {
                     }
                 }
             }
+            existingCodes.add(codeValue)
+            inserted++
+        }
+        val missingRequired = requiredCodes - existingCodes
+        println(
+            "SeedDataService: inserted $inserted airports, skipped $skippedExisting already present, " +
+                "missing required airport codes=${missingRequired.size}"
+        )
+        if (missingRequired.isNotEmpty()) {
+            println("SeedDataService: missing airport codes: ${missingRequired.sorted().joinToString(", ")}")
         }
     }
 
@@ -206,6 +216,8 @@ object SeedDataService {
                 definitions += SeatDefinition("$row$seatLetter", seatClass)
                 created++
             }
+            existingFlightKeys.add(flightKey)
+            inserted++
         }
 
         return definitions
