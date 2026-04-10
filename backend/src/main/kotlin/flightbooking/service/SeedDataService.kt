@@ -3,80 +3,137 @@ package flightbooking.service
 import flightbooking.db.table.AircraftTable
 import flightbooking.db.table.AirportsTable
 import flightbooking.db.table.FlightsTable
-import flightbooking.db.table.AirportsTable.code
-import flightbooking.db.table.AirportsTable.id
-import flightbooking.db.table.FlightsTable.basePrice
-import flightbooking.db.table.FlightsTable.flightNumber
-import flightbooking.db.table.FlightsTable.departureAirportId
-import flightbooking.db.table.FlightsTable.arrivalAirportId
-import flightbooking.db.table.FlightsTable.departureTime
-import flightbooking.db.table.FlightsTable.arrivalTime
-import flightbooking.db.table.FlightsTable.aircraftId
-import flightbooking.db.table.FlightsTable.status
-import flightbooking.db.table.AirportsTable.city
-import flightbooking.db.table.AirportsTable.name
-import flightbooking.db.table.AirportsTable.country
+import flightbooking.db.table.SeatsTable
+import org.apache.commons.csv.CSVFormat
+import org.apache.commons.csv.CSVParser
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
+import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.insert
+import org.jetbrains.exposed.sql.SortOrder
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
+import java.io.InputStreamReader
 import java.math.BigDecimal
 import java.math.RoundingMode
+import java.nio.file.Files
+import java.nio.file.Path
+import java.time.DayOfWeek
+import java.time.Duration
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
+import kotlin.math.ceil
 
 object SeedDataService {
 
-    private val timeFormatter = DateTimeFormatter.ofPattern("H:mm")
+    private const val AIRPORTS_CSV_PATH = "data/airports.csv"
+    private const val FLIGHT_SCHEDULE_RESOURCE_PATH = "data/flight_schedule.csv"
+    private val scheduleTimeFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("H:mm")
 
-    fun seedInitialData() {
-        transaction {
-            val airportCount = AirportsTable.selectAll().count()
-            println("SeedDataService: airports before seed = $airportCount")
-            seedAirports()
+    fun seedAll() {
+        seedAirports()
+        seedFlights()
+    }
 
-            val flightCount = FlightsTable.selectAll().count()
-            println("SeedDataService: flights before seed = $flightCount")
-            seedFlights()
+    fun seedAirports() {
+        val reader = InputStreamReader(
+            javaClass.classLoader.getResourceAsStream(AIRPORTS_CSV_PATH)
+                ?: throw IllegalStateException("airports.csv not found at $AIRPORTS_CSV_PATH")
+        )
 
-            val finalAirportCount = AirportsTable.selectAll().count()
-            val finalFlightCount = FlightsTable.selectAll().count()
-            val aircraftCount = AircraftTable.selectAll().count()
-            println(
-                "SeedDataService: seed complete airports=$finalAirportCount flights=$finalFlightCount aircraft=$aircraftCount"
-            )
+        reader.use {
+            CSVParser.parse(it, csvFormat()).use { parser ->
+                transaction {
+                    parser.forEach { record ->
+                        val code = record.get("iata_code").trim().uppercase()
+                        if (code.isBlank()) return@forEach
+
+                        val exists = AirportsTable
+                            .selectAll()
+                            .where { AirportsTable.code eq code }
+                            .limit(1)
+                            .any()
+
+                        if (!exists) {
+                            AirportsTable.insert { row ->
+                                row[AirportsTable.code] = code
+                                row[AirportsTable.name] = record.get("name").trim().ifBlank { null }
+                                row[AirportsTable.city] = record.get("municipality").trim().ifBlank { null }
+                                row[AirportsTable.country] = record.get("iso_country").trim().ifBlank { null }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
-    private fun seedAirports() {
-        val requiredCodes = FlightScheduleLoader.loadFromCsv()
-            .flatMap { listOf(it.from, it.to) }
-            .map { it.trim().uppercase() }
-            .filter { it.isNotBlank() }
-            .toSet()
-        val existingCodes = AirportsTable.selectAll()
-            .map { it[code].trim().uppercase() }
-            .toHashSet()
-        val seenCodes = HashSet<String>()
-        var inserted = 0
-        var skippedExisting = 0
-        for (airport in AirportLoader.loadFromCsv()) {
-            val codeValue = airport.iata_code.trim().uppercase()
-            if (codeValue.isBlank() || codeValue !in requiredCodes || !seenCodes.add(codeValue)) {
-                continue
-            }
-            if (codeValue in existingCodes) {
-                skippedExisting++
-                continue
-            }
+    fun seedFlights() {
+        openFlightScheduleReader().use { reader ->
+            CSVParser.parse(reader, csvFormat()).use { parser ->
+                transaction {
+                    val airportIdsByCode = AirportsTable
+                        .selectAll()
+                        .associate { row -> row[AirportsTable.code].uppercase() to row[AirportsTable.id] }
+                        .toMutableMap()
 
-            AirportsTable.insert {
-                it[code] = codeValue
-                it[name] = airport.name
-                it[city] = airport.municipality
-                it[country] = airport.iso_country
+                    val aircraftIdsByKey = AircraftTable
+                        .selectAll()
+                        .associate { row -> aircraftKey(row[AircraftTable.model], row[AircraftTable.totalSeats]) to row[AircraftTable.id] }
+                        .toMutableMap()
+
+                    parser.forEach { record ->
+                        val departureCode = record.get("from").trim().uppercase()
+                        val arrivalCode = record.get("to").trim().uppercase()
+                        val departureAirportId = airportIdsByCode[departureCode] ?: return@forEach
+                        val arrivalAirportId = airportIdsByCode[arrivalCode] ?: return@forEach
+
+                        val aircraftModel = record.get("airline").trim().ifBlank { "Default Aircraft" } + " Standard Fleet"
+                        val totalSeats = record.get("availableSeats").trim().toIntOrNull() ?: 189
+                        val aircraftId = aircraftIdsByKey.getOrPut(aircraftKey(aircraftModel, totalSeats)) {
+                            createAircraftWithSeats(aircraftModel, totalSeats)
+                        }
+
+                        val departureDate = nextOperatingDate(
+                            startDate = LocalDate.now(),
+                            operateDays = record.get("operateDays").trim()
+                        )
+                        val departureDateTime = LocalDateTime.of(
+                            departureDate,
+                            parseTime(record.get("departureTime"))
+                        )
+                        val arrivalDateTime = resolveArrivalDateTime(
+                            departureDateTime = departureDateTime,
+                            arrivalTime = record.get("arrivalTime").trim(),
+                            durationValue = record.get("duration").trim()
+                        )
+                        val basePrice = parsePrice(record.get("price").trim(), record.get("duration").trim(), record.get("stops").trim())
+                        val flightNumber = record.get("flightNumber").trim()
+
+                        val exists = FlightsTable
+                            .selectAll()
+                            .where {
+                                (FlightsTable.flightNumber eq flightNumber) and
+                                    (FlightsTable.departureTime eq departureDateTime)
+                            }
+                            .limit(1)
+                            .any()
+
+                        if (!exists) {
+                            FlightsTable.insert { row ->
+                                row[FlightsTable.flightNumber] = flightNumber
+                                row[FlightsTable.departureAirportId] = departureAirportId
+                                row[FlightsTable.arrivalAirportId] = arrivalAirportId
+                                row[FlightsTable.departureTime] = departureDateTime
+                                row[FlightsTable.arrivalTime] = arrivalDateTime
+                                row[FlightsTable.aircraftId] = aircraftId
+                                row[FlightsTable.basePrice] = basePrice
+                                row[FlightsTable.status] = "scheduled"
+                            }
+                        }
+                    }
+                }
             }
             existingCodes.add(codeValue)
             inserted++
@@ -91,111 +148,160 @@ object SeedDataService {
         }
     }
 
-    private fun seedFlights() {
-        val airportIndex = AirportsTable.selectAll()
-            .associate { row -> row[code] to row[id] }
-        val defaultAircraftId = getDefaultAircraftId()
-        val existingFlightKeys = FlightsTable.selectAll()
-            .map { row ->
-                listOf(
-                    row[flightNumber],
-                    row[departureAirportId].toString(),
-                    row[arrivalAirportId].toString(),
-                    row[departureTime].toString(),
-                    row[arrivalTime].toString()
-                ).joinToString("|")
-            }
-            .toHashSet()
-        var inserted = 0
-        var skippedMissingAirport = 0
-        var skippedExisting = 0
+    private fun openFlightScheduleReader(): InputStreamReader {
+        val resourceStream = javaClass.classLoader.getResourceAsStream(FLIGHT_SCHEDULE_RESOURCE_PATH)
+        if (resourceStream != null) {
+            return InputStreamReader(resourceStream)
+        }
 
-        for (row in FlightScheduleLoader.loadFromCsv()) {
-            val departureId = airportIndex[row.from]
-            val arrivalId = airportIndex[row.to]
-            if (departureId == null || arrivalId == null) {
-                skippedMissingAirport++
-                continue
-            }
+        val candidatePaths = listOf(
+            Path.of("FlightSchedule.csv"),
+            Path.of("backend", "FlightSchedule.csv"),
+            Path.of("..", "FlightSchedule.csv")
+        )
 
-            val scheduledDeparture = parseDateTime(row.departureTime, LocalDate.now())
-            val arrivalParts = parseTimeParts(row.arrivalTime)
-            val scheduledArrival = LocalDateTime.of(
-                scheduledDeparture.toLocalDate().plusDays(arrivalParts.dayOffset.toLong()),
-                arrivalParts.time
-            ).let {
-                if (arrivalParts.dayOffset == 0 && it <= scheduledDeparture) it.plusDays(1) else it
-            }
-            val flightKey = listOf(
-                row.flightNumber,
-                departureId.toString(),
-                arrivalId.toString(),
-                scheduledDeparture.toString(),
-                scheduledArrival.toString()
-            ).joinToString("|")
-            if (flightKey in existingFlightKeys) {
-                skippedExisting++
-                continue
-            }
-            val price = row.price.toBigDecimalOrNull()?.setScale(2, RoundingMode.HALF_UP) ?: BigDecimal("199.00")
+        val filePath = candidatePaths.firstOrNull { Files.exists(it) }
+            ?: throw IllegalStateException(
+                "FlightSchedule.csv not found. Put it in the project root or add it to resources as $FLIGHT_SCHEDULE_RESOURCE_PATH"
+            )
 
-            FlightsTable.insert {
-                it[flightNumber] = row.flightNumber
-                it[departureAirportId] = departureId
-                it[arrivalAirportId] = arrivalId
-                it[departureTime] = scheduledDeparture
-                it[arrivalTime] = scheduledArrival
-                it[aircraftId] = defaultAircraftId
-                it[basePrice] = price
-                it[status] = "scheduled"
+        return InputStreamReader(filePath.toFile().inputStream())
+    }
+
+    private fun createAircraftWithSeats(modelName: String, totalSeats: Int): Int {
+        AircraftTable.insert { row ->
+            row[AircraftTable.model] = modelName
+            row[AircraftTable.totalSeats] = totalSeats
+        }
+
+        val aircraftId = AircraftTable
+            .selectAll()
+            .where {
+                (AircraftTable.model eq modelName) and
+                    (AircraftTable.totalSeats eq totalSeats)
+            }
+            .orderBy(AircraftTable.id, SortOrder.DESC)
+            .limit(1)
+            .first()[AircraftTable.id]
+
+        generateSeatDefinitions(totalSeats).forEach { seat ->
+            SeatsTable.insert { row ->
+                row[SeatsTable.aircraftId] = aircraftId
+                row[SeatsTable.seatNumber] = seat.number
+                row[SeatsTable.seatClass] = seat.seatClass
+            }
+        }
+
+        return aircraftId
+    }
+
+    private fun generateSeatDefinitions(totalSeats: Int): List<SeatDefinition> {
+        if (totalSeats <= 0) return emptyList()
+
+        val seatsPerRow = 6
+        val rows = ceil(totalSeats / seatsPerRow.toDouble()).toInt()
+        val seatLetters = listOf('A', 'B', 'C', 'D', 'E', 'F')
+        val definitions = mutableListOf<SeatDefinition>()
+        var created = 0
+
+        for (row in 1..rows) {
+            for (seatLetter in seatLetters) {
+                if (created >= totalSeats) return definitions
+
+                val seatClass = when {
+                    row <= 3 -> "business"
+                    row <= 8 -> "premium_economy"
+                    else -> "economy"
+                }
+                definitions += SeatDefinition("$row$seatLetter", seatClass)
+                created++
             }
             existingFlightKeys.add(flightKey)
             inserted++
         }
-        println(
-            "SeedDataService: inserted $inserted flights, skipped $skippedExisting already present, " +
-                "skipped $skippedMissingAirport because airport codes were missing"
-        )
+
+        return definitions
     }
 
-    private fun parseDateTime(timeText: String, fallbackDate: LocalDate): LocalDateTime {
-        val parsed = parseTimeParts(timeText)
-        return LocalDateTime.of(fallbackDate.plusDays(parsed.dayOffset.toLong()), parsed.time)
-    }
-
-    private fun parseTimeParts(timeText: String): ParsedTime {
-        val normalized = timeText.trim()
-        val parts = normalized.split(Regex("\\s+"))
-        val time = LocalTime.parse(parts.first(), timeFormatter)
-        val dayOffset = parts.getOrNull(1)
-            ?.removePrefix("+")
-            ?.toIntOrNull()
-            ?: 0
-        return ParsedTime(time = time, dayOffset = dayOffset)
-    }
-
-    private fun getDefaultAircraftId(): Int {
-        val existing = AircraftTable
-            .selectAll()
-            .where { AircraftTable.model eq "Standard" }
-            .singleOrNull()
-
-        if (existing != null) return existing[AircraftTable.id]
-
-        AircraftTable.insert {
-            it[AircraftTable.model] = "Standard"
-            it[AircraftTable.totalSeats] = 180
+    private fun nextOperatingDate(startDate: LocalDate, operateDays: String): LocalDate {
+        if (operateDays.length != 7 || operateDays.none { it == '1' }) {
+            return startDate
         }
 
-        return AircraftTable
-            .selectAll()
-            .where { AircraftTable.model eq "Standard" }
-            .single()[AircraftTable.id]
+        for (offset in 0..13) {
+            val candidate = startDate.plusDays(offset.toLong())
+            val operateIndex = candidate.dayOfWeek.toOperateDaysIndex()
+            if (operateDays[operateIndex] == '1') {
+                return candidate
+            }
+        }
+
+        return startDate
     }
 
-    private data class ParsedTime(
-        val time: LocalTime,
-        val dayOffset: Int
+    private fun DayOfWeek.toOperateDaysIndex(): Int = when (this) {
+        DayOfWeek.MONDAY -> 0
+        DayOfWeek.TUESDAY -> 1
+        DayOfWeek.WEDNESDAY -> 2
+        DayOfWeek.THURSDAY -> 3
+        DayOfWeek.FRIDAY -> 4
+        DayOfWeek.SATURDAY -> 5
+        DayOfWeek.SUNDAY -> 6
+    }
+
+    private fun resolveArrivalDateTime(
+        departureDateTime: LocalDateTime,
+        arrivalTime: String,
+        durationValue: String,
+    ): LocalDateTime {
+        val duration = parseDuration(durationValue)
+        if (duration != null) {
+            return departureDateTime.plus(duration)
+        }
+
+        val parsedArrivalTime = parseTime(arrivalTime)
+        var arrivalDateTime = LocalDateTime.of(departureDateTime.toLocalDate(), parsedArrivalTime)
+        if (!arrivalDateTime.isAfter(departureDateTime)) {
+            arrivalDateTime = arrivalDateTime.plusDays(1)
+        }
+        return arrivalDateTime
+    }
+
+    private fun parseTime(value: String): LocalTime =
+        LocalTime.parse(value.trim(), scheduleTimeFormatter)
+
+    private fun parseDuration(value: String): Duration? {
+        val cleaned = value.lowercase().replace(" ", "")
+        if (cleaned.isBlank()) return null
+
+        val hourPart = Regex("(\\d+)h").find(cleaned)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
+        val minutePart = Regex("(\\d+)m").find(cleaned)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
+        if (hourPart == 0L && minutePart == 0L) return null
+
+        return Duration.ofHours(hourPart).plusMinutes(minutePart)
+    }
+
+    private fun parsePrice(price: String, durationValue: String, stopsValue: String): BigDecimal {
+        price.toBigDecimalOrNull()?.let { return it.setScale(2, RoundingMode.HALF_UP) }
+
+        val durationMinutes = parseDuration(durationValue)?.toMinutes()?.toInt() ?: 90
+        val stops = stopsValue.toIntOrNull() ?: 0
+        val derivedPrice = 59.99 + (durationMinutes * 0.45) + (stops * 35)
+        return BigDecimal.valueOf(derivedPrice).setScale(2, RoundingMode.HALF_UP)
+    }
+
+    private fun csvFormat(): CSVFormat =
+        CSVFormat.DEFAULT.builder()
+            .setHeader()
+            .setSkipHeaderRecord(true)
+            .setIgnoreSurroundingSpaces(true)
+            .build()
+
+    private fun aircraftKey(model: String?, totalSeats: Int): String =
+        "${model.orEmpty().trim()}::$totalSeats"
+
+    private data class SeatDefinition(
+        val number: String,
+        val seatClass: String,
     )
 }
-

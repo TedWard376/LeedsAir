@@ -1,0 +1,49 @@
+name: Backend CI
+
+on:
+  push:
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend.yml'
+  pull_request:
+    paths:
+      - 'backend/**'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Build with Gradle
+        run: |
+          chmod +x backend/gradlew || true
+          ./backend/gradlew build
+
+      - name: Run tests
+        run: ./backend/gradlew test
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-results
+          path: backend/build/test-results/
+
+      - name: Check build output
+        run: |
+          if [ ! -f "backend/build/libs/"*.jar ]; then
+            echo "Build failed: JAR not created"
+            exit 1
+          fi
+          echo "✓ Build successful"
+        shell: bash
