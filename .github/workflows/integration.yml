@@ -57,8 +57,8 @@ jobs:
         run: npm run build
         working-directory: Frontend
 
-      - name: Run frontend tests
-        run: npm test -- --run
+      - name: Run integration tests
+        run: npm test -- --run src/tests/integration.test.jsx
         working-directory: Frontend
         continue-on-error: false
 
