@@ -101,5 +101,14 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
           cache: gradle
-      - run: chmod +x backend/gradlew && ./gradlew build
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+        working-directory: backend
+
+      - name: Build backend with Gradle
+        run: ./gradlew build
+        working-directory: backend
+
+      - name: Run backend tests
+        run: ./gradlew test
         working-directory: backend
