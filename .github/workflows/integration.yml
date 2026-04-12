@@ -27,12 +27,23 @@ jobs:
           cache: 'npm'
           cache-dependency-path: 'Frontend/package-lock.json'
 
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+        working-directory: backend
+
+      - name: Build backend with Gradle
+        run: ./gradlew build
+        working-directory: backend
+
+      - name: Run backend tests
+        run: ./gradlew test
+        working-directory: backend
+
       - name: Start backend
         run: |
-          cd backend
-          chmod +x gradlew
           ./gradlew bootRun &
           sleep 10
+        working-directory: backend
         shell: bash
 
       - name: Wait for backend to be ready
