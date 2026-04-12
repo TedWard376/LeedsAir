@@ -41,7 +41,7 @@ jobs:
 
       - name: Start backend
         run: |
-          ./gradlew Run &
+          ./gradlew bootRun &
           sleep 10
         working-directory: backend
         shell: bash
