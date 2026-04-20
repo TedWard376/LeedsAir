@@ -31,7 +31,13 @@ object BookingService {
         val passenger: Passenger,
     )
 
-    var Bookings = listOf(
+    @Serializable
+    data class BookingLookupResponse(
+        val found: Boolean,
+        val booking: Booking? = null
+    )
+
+    private var bookings = listOf(
         Booking(
             ref = "LEEDS1A",
             userId = 1,
@@ -51,29 +57,28 @@ object BookingService {
         )
     )
 
-    fun getAllBookings(userId: Int): String {
-        var userBookings : List<Booking> = listOf()
-        for (b in Bookings) {
-            if (b.userId == userId) {
-                userBookings = userBookings.plus(b)
-            }
-        }
-        return "$userBookings"
+    fun getAllBookings(userId: Int): List<Booking> {
+        return bookings.filter { it.userId == userId }
     }
 
-    fun getBooking(lastName: String, ref: String): String {
-        for (b in Bookings) {
-            if (b.passenger.lastName == lastName && b.ref == ref) {
-                return "$b"
-            }
-        }
-        return ""
+    fun getBooking(lastName: String, ref: String): BookingLookupResponse {
+        val booking = bookings.firstOrNull { it.passenger.lastName == lastName && it.ref == ref }
+        return BookingLookupResponse(found = booking != null, booking = booking)
     }
 
-    fun newBooking(str : String) :  String {
+    fun newBooking(str : String) : Booking {
         val b = Json.decodeFromString<Booking>(str)
-        val booking = Booking("LEEDS${Bookings.size}A", b.userId, b.flightId, b.travelClass, b.seat, b.extras, b.totalPrice, b.passenger)
-        Bookings = Bookings.plus(booking)
-        return Json.encodeToString(booking)
+        val booking = Booking(
+            ref = "LEEDS${bookings.size}A",
+            userId = b.userId,
+            flightId = b.flightId,
+            travelClass = b.travelClass,
+            seat = b.seat,
+            extras = b.extras,
+            totalPrice = b.totalPrice,
+            passenger = b.passenger
+        )
+        bookings = bookings.plus(booking)
+        return booking
     }
 }
