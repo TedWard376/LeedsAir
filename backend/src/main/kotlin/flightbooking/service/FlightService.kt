@@ -2,12 +2,14 @@ package flightbooking.service
 
 import flightbooking.db.table.AircraftTable
 import flightbooking.db.table.AirportsTable
-import flightbooking.db.table.FlightsTable
+import flightbooking.db.table.FlightSchedulesTable
+import flightbooking.db.table.ScheduledFlightsTable
 import kotlinx.serialization.Serializable
 import org.jetbrains.exposed.sql.ResultRow
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
 import java.time.LocalDate
+import java.time.Duration
 import java.time.format.DateTimeParseException
 
 @Serializable
@@ -27,10 +29,6 @@ data class FlightResponse(
 )
 
 object FlightService {
-    private val scheduleIndex by lazy {
-        FlightScheduleLoader.loadFromCsv().associateBy { it.flightNumber.uppercase() }
-    }
-
     fun searchFlights(from: String?, to: String?, departureDate: String?): List<FlightResponse> = transaction {
         val normalizedFrom = from?.trim()?.uppercase().takeUnless { it.isNullOrBlank() }
         val normalizedTo = to?.trim()?.uppercase().takeUnless { it.isNullOrBlank() }
@@ -44,25 +42,28 @@ object FlightService {
 
         val airportsById = AirportsTable.selectAll().associateBy { it[AirportsTable.id] }
         val aircraftById = AircraftTable.selectAll().associateBy { it[AircraftTable.id] }
+        val schedulesById = FlightSchedulesTable.selectAll().associateBy { it[FlightSchedulesTable.id] }
 
-        FlightsTable.selectAll()
+        ScheduledFlightsTable.selectAll()
             .mapNotNull { row ->
-                val departureAirport = airportsById[row[FlightsTable.departureAirportId]] ?: return@mapNotNull null
-                val arrivalAirport = airportsById[row[FlightsTable.arrivalAirportId]] ?: return@mapNotNull null
+                val schedule = schedulesById[row[ScheduledFlightsTable.scheduleId]] ?: return@mapNotNull null
+                val departureAirport = airportsById[schedule[FlightSchedulesTable.departureAirportId]] ?: return@mapNotNull null
+                val arrivalAirport = airportsById[schedule[FlightSchedulesTable.arrivalAirportId]] ?: return@mapNotNull null
                 val departureCode = departureAirport[AirportsTable.code].uppercase()
                 val arrivalCode = arrivalAirport[AirportsTable.code].uppercase()
 
                 if (normalizedFrom != null && departureCode != normalizedFrom) return@mapNotNull null
                 if (normalizedTo != null && arrivalCode != normalizedTo) return@mapNotNull null
 
-                val departureDateValue = row[FlightsTable.departureTime].toLocalDate()
+                val departureDateValue = row[ScheduledFlightsTable.departureTime].toLocalDate()
                 if (parsedDate != null && departureDateValue != parsedDate) return@mapNotNull null
 
                 buildFlightResponse(
                     row = row,
+                    schedule = schedule,
                     departureCode = departureCode,
                     arrivalCode = arrivalCode,
-                    aircraftSeats = aircraftById[row[FlightsTable.aircraftId]]?.get(AircraftTable.totalSeats)
+                    aircraftSeats = aircraftById[row[ScheduledFlightsTable.aircraftId]]?.get(AircraftTable.totalSeats)
                 )
             }
             .sortedWith(compareBy<FlightResponse> { it.departureDate }.thenBy { it.departureTime }.thenBy { it.flightNumber })
@@ -70,30 +71,27 @@ object FlightService {
 
     private fun buildFlightResponse(
         row: ResultRow,
+        schedule: ResultRow,
         departureCode: String,
         arrivalCode: String,
         aircraftSeats: Int?
     ): FlightResponse {
-        val schedule = scheduleIndex[row[FlightsTable.flightNumber].uppercase()]
-        val departureDateTime = row[FlightsTable.departureTime]
-        val arrivalDateTime = row[FlightsTable.arrivalTime]
+        val departureDateTime = row[ScheduledFlightsTable.departureTime]
+        val arrivalDateTime = row[ScheduledFlightsTable.arrivalTime]
 
         return FlightResponse(
-            id = row[FlightsTable.id],
-            flightNumber = row[FlightsTable.flightNumber],
-            airline = schedule?.airline?.ifBlank { "Demo Air" } ?: "Demo Air",
+            id = row[ScheduledFlightsTable.id],
+            flightNumber = schedule[FlightSchedulesTable.flightNumber],
+            airline = schedule[FlightSchedulesTable.airline].ifBlank { "Demo Air" },
             from = departureCode,
             to = arrivalCode,
-            departureTime = schedule?.departureTime?.ifBlank { departureDateTime.toLocalTime().toString() }
-                ?: departureDateTime.toLocalTime().toString(),
-            arrivalTime = schedule?.arrivalTime?.ifBlank { arrivalDateTime.toLocalTime().toString() }
-                ?: arrivalDateTime.toLocalTime().toString(),
+            departureTime = departureDateTime.toLocalTime().toString(),
+            arrivalTime = arrivalDateTime.toLocalTime().toString(),
             departureDate = departureDateTime.toLocalDate().toString(),
-            duration = schedule?.duration?.ifBlank { formatDuration(departureDateTime, arrivalDateTime) }
-                ?: formatDuration(departureDateTime, arrivalDateTime),
-            stops = schedule?.stops ?: 0,
-            price = row[FlightsTable.basePrice].toInt(),
-            availableSeats = schedule?.availableSeats ?: aircraftSeats ?: 180
+            duration = formatDuration(departureDateTime, arrivalDateTime),
+            stops = schedule[FlightSchedulesTable.stops],
+            price = row[ScheduledFlightsTable.basePrice].toInt(),
+            availableSeats = row[ScheduledFlightsTable.availableSeats] ?: aircraftSeats ?: 180
         )
     }
 
@@ -101,7 +99,7 @@ object FlightService {
         departureDateTime: java.time.LocalDateTime,
         arrivalDateTime: java.time.LocalDateTime
     ): String {
-        val minutes = java.time.Duration.between(departureDateTime, arrivalDateTime).toMinutes().coerceAtLeast(0)
+        val minutes = Duration.between(departureDateTime, arrivalDateTime).toMinutes().coerceAtLeast(0)
         val hours = minutes / 60
         val remainingMinutes = minutes % 60
         return "${hours}h ${remainingMinutes}m"

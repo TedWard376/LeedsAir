@@ -14,6 +14,7 @@ data class FlightScheduleRow(
     val to: String,
     val departureTime: String,
     val arrivalTime: String,
+    val operateDays: String,
     val duration: String,
     val stops: Int,
     val price: String,
@@ -35,6 +36,7 @@ object FlightScheduleLoader {
                     val to = record.get("to").trim().uppercase()
                     val departureTime = record.get("departureTime").trim()
                     val arrivalTime = record.get("arrivalTime").trim()
+                    val operateDays = record.get("operateDays").trim()
                     val duration = record.get("duration").trim()
                     val stops = record.get("stops").trim().toIntOrNull() ?: 0
                     val price = record.get("price").trim()
@@ -50,6 +52,7 @@ object FlightScheduleLoader {
                             to = to,
                             departureTime = departureTime,
                             arrivalTime = arrivalTime,
+                            operateDays = operateDays,
                             duration = duration,
                             stops = stops,
                             price = price,

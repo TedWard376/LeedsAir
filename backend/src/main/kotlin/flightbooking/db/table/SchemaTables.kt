@@ -3,6 +3,7 @@ package flightbooking.db.table
 import org.jetbrains.exposed.sql.ReferenceOption
 import org.jetbrains.exposed.sql.Table
 import org.jetbrains.exposed.sql.javatime.datetime
+import org.jetbrains.exposed.sql.javatime.time
 
 object UsersTable : Table("users") {
     val id = integer("id").autoIncrement()
@@ -42,6 +43,40 @@ object FlightsTable : Table("flights") {
     val basePrice = decimal("base_price", 12, 2)
     val status = varchar("status", 32)
     override val primaryKey = PrimaryKey(id)
+}
+
+object FlightSchedulesTable : Table("flight_schedules") {
+    val id = integer("id").autoIncrement()
+    val flightNumber = varchar("flight_number", 32)
+    val airline = varchar("airline", 255)
+    val departureAirportId = reference("departure_airport_id", AirportsTable.id, onDelete = ReferenceOption.RESTRICT)
+    val arrivalAirportId = reference("arrival_airport_id", AirportsTable.id, onDelete = ReferenceOption.RESTRICT)
+    val departureTime = time("departure_time")
+    val arrivalTime = time("arrival_time")
+    val operateDays = varchar("operate_days", 7)
+    val durationMinutes = integer("duration_minutes")
+    val stops = integer("stops")
+    override val primaryKey = PrimaryKey(id)
+
+    init {
+        uniqueIndex(flightNumber)
+    }
+}
+
+object ScheduledFlightsTable : Table("scheduled_flights") {
+    val id = integer("id").autoIncrement()
+    val scheduleId = reference("schedule_id", FlightSchedulesTable.id, onDelete = ReferenceOption.CASCADE)
+    val departureTime = datetime("departure_time")
+    val arrivalTime = datetime("arrival_time")
+    val aircraftId = reference("aircraft_id", AircraftTable.id, onDelete = ReferenceOption.RESTRICT)
+    val basePrice = decimal("base_price", 12, 2)
+    val availableSeats = integer("available_seats").nullable()
+    val status = varchar("status", 32)
+    override val primaryKey = PrimaryKey(id)
+
+    init {
+        uniqueIndex(scheduleId, departureTime)
+    }
 }
 
 object SeatsTable : Table("seats") {
