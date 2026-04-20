@@ -3,10 +3,12 @@ package flightbooking
 import flightbooking.service.BookingService
 import flightbooking.service.FlightService
 import flightbooking.service.HomeService
+import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.*
 import io.ktor.server.request.receiveText
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
+import kotlinx.serialization.SerializationException
 
 fun Application.configureRouting() {
     routing {
@@ -34,7 +36,7 @@ fun Application.configureRouting() {
             val userId = call.request.queryParameters["userId"]?.toIntOrNull()
             if (userId == null) {
                 call.respond(
-                    status = io.ktor.http.HttpStatusCode.BadRequest,
+                    status = HttpStatusCode.BadRequest,
                     message = mapOf("error" to "Missing or invalid userId")
                 )
                 return@get
@@ -48,7 +50,7 @@ fun Application.configureRouting() {
             val lastName = call.request.queryParameters["lastName"]?.trim().orEmpty()
             if (ref.isBlank() || lastName.isBlank()) {
                 call.respond(
-                    status = io.ktor.http.HttpStatusCode.BadRequest,
+                    status = HttpStatusCode.BadRequest,
                     message = mapOf("error" to "Missing ref or lastName")
                 )
                 return@get
@@ -56,7 +58,7 @@ fun Application.configureRouting() {
 
             val result = BookingService.getBooking(lastName = lastName, ref = ref)
             if (!result.found) {
-                call.respond(io.ktor.http.HttpStatusCode.NotFound, result)
+                call.respond(HttpStatusCode.NotFound, result)
                 return@get
             }
 
@@ -64,11 +66,31 @@ fun Application.configureRouting() {
         }
 
         post("/api/bookings") {
-            val requestBody = call.receiveText()
-            call.respond(
-                status = io.ktor.http.HttpStatusCode.Created,
-                message = BookingService.newBooking(requestBody)
-            )
+            val requestBody = call.receiveText().trim()
+            if (requestBody.isBlank()) {
+                call.respond(
+                    status = HttpStatusCode.BadRequest,
+                    message = mapOf("error" to "Request body cannot be empty")
+                )
+                return@post
+            }
+
+            try {
+                call.respond(
+                    status = HttpStatusCode.Created,
+                    message = BookingService.newBooking(requestBody)
+                )
+            } catch (_: SerializationException) {
+                call.respond(
+                    status = HttpStatusCode.BadRequest,
+                    message = mapOf("error" to "Invalid booking payload")
+                )
+            } catch (_: IllegalArgumentException) {
+                call.respond(
+                    status = HttpStatusCode.BadRequest,
+                    message = mapOf("error" to "Invalid booking payload")
+                )
+            }
         }
     }
 }
