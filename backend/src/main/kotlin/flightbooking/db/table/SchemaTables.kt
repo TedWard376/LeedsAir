@@ -113,7 +113,7 @@ object PassengersTable : Table("passengers") {
 object BookingFlightsTable : Table("booking_flights") {
     val id = integer("id").autoIncrement()
     val bookingId = reference("booking_id", BookingsTable.id, onDelete = ReferenceOption.CASCADE)
-    val flightId = reference("flight_id", FlightsTable.id, onDelete = ReferenceOption.RESTRICT)
+    val flightId = reference("flight_id", ScheduledFlightsTable.id, onDelete = ReferenceOption.RESTRICT)
     override val primaryKey = PrimaryKey(id)
 
     init {
@@ -124,7 +124,7 @@ object BookingFlightsTable : Table("booking_flights") {
 object SeatAssignmentsTable : Table("seat_assignments") {
     val id = integer("id").autoIncrement()
     val passengerId = reference("passenger_id", PassengersTable.id, onDelete = ReferenceOption.CASCADE)
-    val flightId = reference("flight_id", FlightsTable.id, onDelete = ReferenceOption.RESTRICT)
+    val flightId = reference("flight_id", ScheduledFlightsTable.id, onDelete = ReferenceOption.RESTRICT)
     val seatId = reference("seat_id", SeatsTable.id, onDelete = ReferenceOption.RESTRICT)
     override val primaryKey = PrimaryKey(id)
 

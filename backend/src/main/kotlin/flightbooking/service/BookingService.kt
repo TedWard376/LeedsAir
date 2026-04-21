@@ -3,8 +3,9 @@ package flightbooking.service
 import flightbooking.db.table.AirportsTable
 import flightbooking.db.table.BookingFlightsTable
 import flightbooking.db.table.BookingsTable
-import flightbooking.db.table.FlightsTable
+import flightbooking.db.table.FlightSchedulesTable
 import flightbooking.db.table.PassengersTable
+import flightbooking.db.table.ScheduledFlightsTable
 import flightbooking.db.table.UsersTable
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
@@ -13,6 +14,7 @@ import kotlinx.serialization.json.JsonIgnoreUnknownKeys
 import org.jetbrains.exposed.sql.ResultRow
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.selectAll
+import org.jetbrains.exposed.sql.update
 import org.jetbrains.exposed.sql.transactions.transaction
 import java.math.BigDecimal
 import java.time.LocalDateTime
@@ -121,11 +123,6 @@ object BookingService {
         val flightId = request.flightId.trim().toIntOrNull()
             ?: throw IllegalArgumentException("flightId must be a numeric flight id")
 
-        val flightExists = FlightsTable.selectAll().any { it[FlightsTable.id] == flightId }
-        if (!flightExists) {
-            throw IllegalArgumentException("flightId does not exist in flights")
-        }
-
         val passengers = request.passengers.ifEmpty {
             listOfNotNull(request.passenger)
         }.filter { passenger ->
@@ -135,6 +132,8 @@ object BookingService {
         if (passengers.isEmpty()) {
             throw IllegalArgumentException("At least one passenger is required")
         }
+
+        reserveSeats(flightId = flightId, seatsRequested = passengers.size)
 
         val resolvedUserId = ensureUserExists(request.userId ?: defaultUserId)
         val bookingReference = generateBookingReference()
@@ -163,6 +162,25 @@ object BookingService {
         }
 
         hydrateBookingById(bookingId) ?: throw IllegalStateException("Booking was created but could not be loaded")
+    }
+
+    private fun reserveSeats(flightId: Int, seatsRequested: Int) {
+        val scheduledFlightRow = ScheduledFlightsTable.selectAll()
+            .firstOrNull { it[ScheduledFlightsTable.id] == flightId }
+            ?: throw IllegalArgumentException("flightId does not exist in scheduled_flights")
+
+        val currentAvailableSeats = scheduledFlightRow[ScheduledFlightsTable.availableSeats]
+        if (currentAvailableSeats != null) {
+            if (currentAvailableSeats < seatsRequested) {
+                throw IllegalArgumentException(
+                    "Not enough seats available. Requested $seatsRequested but only $currentAvailableSeats left"
+                )
+            }
+
+            ScheduledFlightsTable.update({ ScheduledFlightsTable.id eq flightId }) { row ->
+                row[availableSeats] = currentAvailableSeats - seatsRequested
+            }
+        }
     }
 
     private fun ensureUserExists(userId: Int): Int {
@@ -237,19 +255,24 @@ object BookingService {
     }
 
     private fun loadFlightSummary(flightId: Int): BookingFlightSummary? {
-        val flightRow = FlightsTable.selectAll().firstOrNull { it[FlightsTable.id] == flightId } ?: return null
-        val departureAirportId = flightRow[FlightsTable.departureAirportId]
-        val arrivalAirportId = flightRow[FlightsTable.arrivalAirportId]
+        val scheduledFlightRow = ScheduledFlightsTable.selectAll()
+            .firstOrNull { it[ScheduledFlightsTable.id] == flightId }
+            ?: return null
+        val scheduleRow = FlightSchedulesTable.selectAll()
+            .firstOrNull { it[FlightSchedulesTable.id] == scheduledFlightRow[ScheduledFlightsTable.scheduleId] }
+            ?: return null
+        val departureAirportId = scheduleRow[FlightSchedulesTable.departureAirportId]
+        val arrivalAirportId = scheduleRow[FlightSchedulesTable.arrivalAirportId]
         val airportsById = AirportsTable.selectAll().associateBy { it[AirportsTable.id] }
 
         val departureAirport = airportsById[departureAirportId]
         val arrivalAirport = airportsById[arrivalAirportId]
-        val departureDateTime = flightRow[FlightsTable.departureTime]
-        val arrivalDateTime = flightRow[FlightsTable.arrivalTime]
+        val departureDateTime = scheduledFlightRow[ScheduledFlightsTable.departureTime]
+        val arrivalDateTime = scheduledFlightRow[ScheduledFlightsTable.arrivalTime]
 
         return BookingFlightSummary(
             id = flightId,
-            flightNumber = flightRow[FlightsTable.flightNumber],
+            flightNumber = scheduleRow[FlightSchedulesTable.flightNumber],
             from = departureAirport?.get(AirportsTable.code),
             to = arrivalAirport?.get(AirportsTable.code),
             departureTime = departureDateTime.toLocalTime().toString(),
