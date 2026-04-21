@@ -4,7 +4,7 @@ import { LoadingSpinner, ErrorMessage } from "../components/StatusMessages";
 
 export function AccountPage({ onNavigate }) {
   const { user, logoutUser } = useAuth();
-  const { bookings, loading, error } = useBookings();
+  const { bookings, loading, error } = useBookings(user?.id ?? 1);
 
   function handleLogout() {
     logoutUser();

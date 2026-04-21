@@ -33,8 +33,9 @@ fun Application.configureRouting() {
         }
 
         get("/api/bookings") {
-            val userId = call.request.queryParameters["userId"]?.toIntOrNull()
-            if (userId == null) {
+            val rawUserId = call.request.queryParameters["userId"]
+            val userId = rawUserId?.toIntOrNull() ?: 1
+            if (rawUserId != null && rawUserId.toIntOrNull() == null) {
                 call.respond(
                     status = HttpStatusCode.BadRequest,
                     message = mapOf("error" to "Missing or invalid userId")
@@ -57,8 +58,8 @@ fun Application.configureRouting() {
             }
 
             val result = BookingService.getBooking(lastName = lastName, ref = ref)
-            if (!result.found) {
-                call.respond(HttpStatusCode.NotFound, result)
+            if (result == null) {
+                call.respond(HttpStatusCode.NotFound, mapOf("error" to "Booking not found"))
                 return@get
             }
 

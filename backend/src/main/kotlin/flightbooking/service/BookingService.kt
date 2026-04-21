@@ -27,6 +27,8 @@ object BookingService {
 
     private const val defaultUserId = 1
     private const val defaultBookingStatus = "confirmed"
+    private const val defaultTravelClass = "Economy"
+    private const val defaultSeatLabel = "Auto-assigned"
 
     @OptIn(ExperimentalSerializationApi::class)
     @Serializable
@@ -85,12 +87,6 @@ object BookingService {
         val passengers: List<Passenger> = emptyList(),
     )
 
-    @Serializable
-    data class BookingLookupResponse(
-        val found: Boolean,
-        val booking: Booking? = null
-    )
-
     fun getAllBookings(userId: Int): List<Booking> = transaction {
         val bookingRows = BookingsTable.selectAll()
             .filter { it[BookingsTable.userId] == userId }
@@ -99,23 +95,19 @@ object BookingService {
         bookingRows.mapNotNull { row -> hydrateBooking(row) }
     }
 
-    fun getBooking(lastName: String, ref: String): BookingLookupResponse = transaction {
+    fun getBooking(lastName: String, ref: String): Booking? = transaction {
         val normalizedRef = ref.trim()
         val normalizedLastName = lastName.trim().lowercase()
 
         val bookingRow = BookingsTable.selectAll()
             .firstOrNull { it[BookingsTable.bookingReference].equals(normalizedRef, ignoreCase = true) }
-            ?: return@transaction BookingLookupResponse(found = false)
+            ?: return@transaction null
 
         val booking = hydrateBooking(bookingRow)
-            ?: return@transaction BookingLookupResponse(found = false)
+            ?: return@transaction null
 
         val matchesLastName = booking.passenger.lastName.trim().lowercase() == normalizedLastName
-        if (!matchesLastName) {
-            BookingLookupResponse(found = false)
-        } else {
-            BookingLookupResponse(found = true, booking = booking)
-        }
+        if (!matchesLastName) null else booking
     }
 
     fun newBooking(str: String): Booking = transaction {
@@ -243,11 +235,11 @@ object BookingService {
             bookingReference = bookingReference,
             userId = bookingRow[BookingsTable.userId],
             flightId = flightId?.toString().orEmpty(),
-            travelClass = "",
-            seat = "",
+            travelClass = defaultTravelClass,
+            seat = defaultSeatLabel,
             extras = emptyList(),
             totalPrice = bookingRow[BookingsTable.totalPrice].toDouble(),
-            status = bookingRow[BookingsTable.status],
+            status = bookingRow[BookingsTable.status].replaceFirstChar { it.uppercase() },
             createdAt = bookingRow[BookingsTable.createdAt].toString(),
             passenger = passenger,
             flight = flight,
