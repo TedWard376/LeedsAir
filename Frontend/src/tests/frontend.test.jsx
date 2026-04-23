@@ -8,6 +8,14 @@ import { Navbar } from "../components/Navbar.jsx"
 import { AuthProvider } from "../context/AuthContext.jsx"
 import { getFlights, login, createBooking } from "../services/api.js"
 
+const originalFetch = global.fetch
+
+afterEach(() => {
+  vi.restoreAllMocks()
+  global.fetch = originalFetch
+  localStorage.clear()
+})
+
 // ─── Utility tests ────────────────────────────────────────
 
 describe("formatPrice", () => {
