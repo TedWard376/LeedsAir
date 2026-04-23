@@ -9,7 +9,10 @@ async function request(path, options = {}) {
   const res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
   if (!res.ok) {
     let message = `Request failed (${res.status})`;
-    try { const err = await res.json(); message = err.message || message; } catch {}
+    try {
+      const err = await res.json();
+      message = err.message || err.error || message;
+    } catch {}
     throw new Error(message);
   }
   // 204 No Content
@@ -37,8 +40,9 @@ export async function getFlights(params = {}) {
 }
 
 // ── Bookings ──────────────────────────────────────────────
-export async function getBookings() {
-  return request("/bookings");
+export async function getBookings(userId = 1) {
+  const query = new URLSearchParams({ userId: String(userId) }).toString();
+  return request(`/bookings?${query}`);
 }
 
 export async function getBookingByRef(ref, lastName) {

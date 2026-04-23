@@ -1,4 +1,5 @@
 import { useBookings } from "../hooks/useBookings";
+import { useAuth } from "../context/AuthContext";
 import { LoadingSpinner, ErrorMessage } from "../components/StatusMessages";
 
 function BookingRow({ booking }) {
@@ -28,7 +29,8 @@ function BookingRow({ booking }) {
 }
 
 export function BookingsPage() {
-  const { bookings, loading, error } = useBookings();
+  const { user } = useAuth();
+  const { bookings, loading, error } = useBookings(user?.id ?? 1);
 
   return (
     <div className="page bookings-page">
