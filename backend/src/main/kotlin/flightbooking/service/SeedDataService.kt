@@ -27,6 +27,7 @@ import kotlin.math.ceil
 object SeedDataService {
 
     private const val AIRPORTS_CSV_PATH = "data/airports.csv"
+    private const val scheduledFlightHorizonDays = 90
     private val scheduleTimeFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("H:mm")
 
     fun seedAll() {
@@ -115,11 +116,13 @@ object SeedDataService {
     private fun seedScheduledFlights() {
         transaction {
             val scheduleRows = FlightSchedulesTable.selectAll().toList()
+            val startDate = LocalDate.now()
+            val endDateExclusive = startDate.plusDays(scheduledFlightHorizonDays.toLong())
 
             val existingFlightsByScheduleAndDeparture = ScheduledFlightsTable
                 .selectAll()
-                .associateBy { row -> row[ScheduledFlightsTable.scheduleId] to row[ScheduledFlightsTable.departureTime] }
-                .toMutableMap()
+                .map { row -> row[ScheduledFlightsTable.scheduleId] to row[ScheduledFlightsTable.departureTime] }
+                .toMutableSet()
 
             val aircraftIdsByKey = AircraftTable
                 .selectAll()
@@ -140,21 +143,28 @@ object SeedDataService {
                     createAircraftWithSeats(aircraftModel, totalSeats)
                 }
 
-                val departureDate = nextOperatingDate(LocalDate.now(), scheduleRow[FlightSchedulesTable.operateDays])
-                val departureDateTime = LocalDateTime.of(departureDate, scheduleRow[FlightSchedulesTable.departureTime])
-                val arrivalDateTime = departureDateTime.plusMinutes(scheduleRow[FlightSchedulesTable.durationMinutes].toLong())
-                val flightKey = scheduleId to departureDateTime
+                var departureDate = startDate
+                while (departureDate.isBefore(endDateExclusive)) {
+                    if (isOperatingOnDate(departureDate, scheduleRow[FlightSchedulesTable.operateDays])) {
+                        val departureDateTime = LocalDateTime.of(departureDate, scheduleRow[FlightSchedulesTable.departureTime])
+                        val arrivalDateTime = departureDateTime.plusMinutes(scheduleRow[FlightSchedulesTable.durationMinutes].toLong())
+                        val flightKey = scheduleId to departureDateTime
 
-                if (flightKey in existingFlightsByScheduleAndDeparture) return@forEach
+                        if (flightKey !in existingFlightsByScheduleAndDeparture) {
+                            ScheduledFlightsTable.insert { row ->
+                                row[ScheduledFlightsTable.scheduleId] = scheduleId
+                                row[ScheduledFlightsTable.departureTime] = departureDateTime
+                                row[ScheduledFlightsTable.arrivalTime] = arrivalDateTime
+                                row[ScheduledFlightsTable.aircraftId] = aircraftId
+                                row[ScheduledFlightsTable.basePrice] = parsePrice(source.price, scheduleRow[FlightSchedulesTable.durationMinutes], source.stops)
+                                row[ScheduledFlightsTable.availableSeats] = source.availableSeats ?: totalSeats
+                                row[ScheduledFlightsTable.status] = "scheduled"
+                            }
+                            existingFlightsByScheduleAndDeparture += flightKey
+                        }
+                    }
 
-                ScheduledFlightsTable.insert { row ->
-                    row[ScheduledFlightsTable.scheduleId] = scheduleId
-                    row[ScheduledFlightsTable.departureTime] = departureDateTime
-                    row[ScheduledFlightsTable.arrivalTime] = arrivalDateTime
-                    row[ScheduledFlightsTable.aircraftId] = aircraftId
-                    row[ScheduledFlightsTable.basePrice] = parsePrice(source.price, scheduleRow[FlightSchedulesTable.durationMinutes], source.stops)
-                    row[ScheduledFlightsTable.availableSeats] = source.availableSeats ?: totalSeats
-                    row[ScheduledFlightsTable.status] = "scheduled"
+                    departureDate = departureDate.plusDays(1)
                 }
             }
         }
@@ -218,18 +228,9 @@ object SeedDataService {
         return if (cleaned.length == 7 && cleaned.any { it == '1' }) cleaned else "1111111"
     }
 
-    private fun nextOperatingDate(startDate: LocalDate, operateDays: String): LocalDate {
+    private fun isOperatingOnDate(date: LocalDate, operateDays: String): Boolean {
         val normalized = normalizedOperateDays(operateDays)
-
-        for (offset in 0..13) {
-            val candidate = startDate.plusDays(offset.toLong())
-            val operateIndex = candidate.dayOfWeek.toOperateDaysIndex()
-            if (normalized[operateIndex] == '1') {
-                return candidate
-            }
-        }
-
-        return startDate
+        return normalized[date.dayOfWeek.toOperateDaysIndex()] == '1'
     }
 
     private fun DayOfWeek.toOperateDaysIndex(): Int = when (this) {
@@ -242,8 +243,10 @@ object SeedDataService {
         DayOfWeek.SUNDAY -> 6
     }
 
-    private fun parseTime(value: String): LocalTime =
-        LocalTime.parse(value.trim(), scheduleTimeFormatter)
+    private fun parseTime(value: String): LocalTime {
+        val normalized = value.trim().substringBefore(" ").trim()
+        return LocalTime.parse(normalized, scheduleTimeFormatter)
+    }
 
     private fun parseDuration(value: String): Duration? {
         val cleaned = value.lowercase().replace(" ", "")

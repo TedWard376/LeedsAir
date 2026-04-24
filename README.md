@@ -1,143 +1,84 @@
 # LeedsAir Flight Booking System
 
-A full-stack flight booking application built with **React + Vite** (Frontend) and **Kotlin + Spring Boot** (Backend).
+LeedsAir is a full-stack flight booking project with a React + Vite frontend and a Kotlin + Ktor backend.
 
 ## Project Structure
 
-```
+```text
 .
-├── Frontend/              # React + Vite UI (port 3000/3001)
-│   ├── src/
-│   │   ├── components/    # Reusable UI components
-│   │   ├── pages/         # Page containers (HomePage, FlightResultsPage, BookingFlowPage)
-│   │   ├── hooks/         # Custom hooks (useFlights)
-│   │   ├── services/      # API client (src/services/api.js)
-│   │   └── main.jsx
-│   ├── vite.config.js     # Proxy route /api → http://localhost:8080
-│   └── package.json
-├── backend/               # Kotlin + Spring Boot API (port 8080)
-│   ├── src/main/kotlin/flightbooking/
-│   │   ├── Application.kt
-│   │   ├── Routing.kt
-│   │   └── db/
-│   ├── build.gradle.kts
-│   └── src/main/resources/db/migration/
-└── README.md
+|-- Frontend/              # React + Vite UI
+|   |-- src/
+|   |   |-- components/
+|   |   |-- context/
+|   |   |-- hooks/
+|   |   |-- pages/
+|   |   `-- services/
+|   `-- package.json
+|-- backend/               # Ktor API + Flyway + PostgreSQL
+|   |-- src/main/kotlin/flightbooking/
+|   |   |-- Application.kt
+|   |   |-- Routing.kt
+|   |   |-- db/
+|   |   `-- service/
+|   |-- src/main/resources/
+|   |   |-- application.yaml
+|   |   |-- data/
+|   |   `-- db/migration/
+|   `-- build.gradle.kts
+`-- README.md
 ```
 
-## API Endpoints
+## Current Backend Endpoints
 
-All requests go through frontend proxy: `http://localhost:3000 → http://localhost:8080`
+The backend currently exposes these routes:
 
-### Flights Search
-```
-GET /api/flights?from=LBA&to=LHR&departureDate=2026-04-15
-```
-**Response**: Array of flight objects
-```json
-[
-  {
-    "id": "FL001",
-    "flightNumber": "LS101",
-    "airline": "LeedsAir",
-    "from": "LBA",
-    "to": "LHR",
-    "departureTime": "07:30",
-    "arrivalTime": "08:45",
-    "departureDate": "2026-04-15",
-    "duration": "1h 15m",
-    "stops": 0,
-    "price": 89,
-    "availableSeats": 45
-  }
-]
+```text
+GET  /api/home
+GET  /api/flights?from=LBA&to=DUB&departureDate=2026-04-15
+GET  /api/bookings?userId=1
+GET  /api/bookings/lookup?ref=LEEDS1A&lastName=Smith
+POST /api/bookings
 ```
 
-**Frontend call** (`src/services/api.js`):
-```javascript
-export async function getFlights(params = {}) {
-  return request(`/flights?${new URLSearchParams(params).toString()}`);
-}
-```
+The frontend already references additional routes for auth, admin, loyalty, complaints, check-in, cancellation, and booking updates. Those are still to be implemented.
 
-### Authentication
-```
-POST /api/auth/login        { email, password }
-POST /api/auth/register     { firstName, lastName, email, password, phone }
-GET  /api/auth/profile      (requires Bearer token in Authorization header)
-```
-
-### Bookings
-```
-GET  /api/bookings          (returns user's bookings)
-GET  /api/bookings/lookup   ?ref=LEEDS1A&lastName=Smith
-POST /api/bookings          { userId, flightId, passengers, travelClass, totalPrice }
-```
-
-## Running the Application
+## Running The App
 
 ### Frontend
+
 ```bash
 cd Frontend
 npm install
 npm run dev
 ```
-→ Opens on `http://localhost:3000` (or 3001 if taken)
 
-### Backend (Production with Kotlin)
+### Backend
+
 ```bash
 cd backend
 ./gradlew build
 ./gradlew bootRun
 ```
-→ Connects to real database via Flyway migrations
 
-## Frontend Data Flow
+The Ktor API runs on `http://localhost:8080`.
 
-1. **HomePage** → User enters `from`, `to`, `departureDate`, passengers
-2. **FlightResultsPage** → 
-   - Calls `GET /api/flights` with search params
-   - User picks a date → re-fetches flights for that date
-   - Date price bar fetches prices for ±3 days ahead/behind
-   - User selects fare tier (Economy/Business)
-3. **FareTierModal** → Shows price breakdown by class and features
-4. **BookingFlowPage** → Collects passenger details
-5. **POST /api/bookings** → Confirm booking
+## Backend Tests
 
-## Important Implementation Notes
+```bash
+cd backend
+./gradlew test
+```
 
-- **Date Format**: All dates are **ISO strings** (`YYYY-MM-DD`)
-- **Local Dates**: Frontend uses local-date helpers to avoid timezone bugs (see helpers at top of `FlightResultsPage.jsx`)
-- **Fare Multipliers**: Business class is typically 2.8× economy price (see `FARE_TIERS` constant)
-- **Round-trip**: Frontend collects outbound + return flights separately, then combines into one object for booking
-- **Price Bar**: Shows lowest price per day for the selected route (real backend may need price caching)
+## Data And Database
 
-## Authentication
+- Flyway migrations live in `backend/src/main/resources/db/migration/`
+- Seed CSV files live in `backend/src/main/resources/data/`
+- Startup seeding runs when `seed.runOnStartup=true` or `RUN_CSV_SEED=true`
+- Flight schedule data is loaded from `FlightSchedule.csv`
 
-- Login returns a **Bearer token**
-- Token stored in `localStorage`
-- Every API call includes: `Authorization: Bearer <token>` (auto-added in `src/services/api.js`)
+## Current Backend Priorities
 
-## Key Files for Backend Team
-
-| File | Purpose |
-|------|---------|
-| `Frontend/src/services/api.js` | All API calls; shows expected request/response format |
-| `Frontend/src/hooks/useFlights.js` | How flights are fetched & cached |
-| `backend/src/main/resources/db/migration/V1__init_schema.sql` | Database schema |
-
-## CI/CD Pipeline
-
-This project uses **GitHub Actions** for automated testing and building.
-
-### Workflows
-- **Frontend CI**: Lints & builds React/Vite on every push to `Frontend/`
-- **Backend CI**: Builds & tests Kotlin/Gradle on every push to `backend/`
-- **Integration Tests**: Runs full-stack tests after both builds succeed
-
-### Getting Started with CI/CD
-1. Push code to a feature branch
-2. Create a PR to `develop` or `main`
-3. GitHub Actions runs automatically (see Actions tab)
-4. Merge once all checks pass
-
+1. Complete booking lifecycle routes for modify, cancel, and check-in
+2. Add auth endpoints for register, login, and profile
+3. Add complaints, loyalty, and admin APIs
+4. Expand automated backend tests around the main flows
