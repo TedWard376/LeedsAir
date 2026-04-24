@@ -41,6 +41,8 @@ object DatabaseFactory {
         val isSupabasePooler = jdbcUrl.contains("pooler.", ignoreCase = true)
         val maximumPoolSize = if (isSupabasePooler) 1 else configuredMaximumPoolSize.coerceAtLeast(2)
 
+        println("Database init: connecting to ${jdbcUrl.substringBefore('?')}")
+
         Flyway.configure()
             .dataSource(jdbcUrl, username, password)
             .locations("classpath:db/migration")

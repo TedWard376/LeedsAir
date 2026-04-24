@@ -1,11 +1,14 @@
 package flightbooking
 
-import flightbooking.service.*
+import flightbooking.service.BookingService
+import flightbooking.service.FlightService
+import flightbooking.service.HomeService
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.*
 import io.ktor.server.request.receiveText
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
+import kotlinx.serialization.SerializationException
 
 fun Application.configureRouting() {
     routing {
@@ -19,37 +22,76 @@ fun Application.configureRouting() {
             call.respond(HomeService.getHomeData(userIp))
         }
 
-        //Search API
         get("/api/flights") {
-            val tripType = call.request.queryParameters["tripType"]
-            val from = call.request.queryParameters["from"]
-            val to = call.request.queryParameters["to"]
-            val departureDate = call.request.queryParameters["departureDate"]
-            val travelClass = call.request.queryParameters["travelClass"]
-            val adults = call.request.queryParameters["adults"]
-            val children = call.request.queryParameters["children"]
-            val infants = call.request.queryParameters["infants"]
-            //val response = listOf<String>("""{"id":"FL001","flightNumber":"LS101","airline":"LeedsAir","from":"${from.toString()}","to":"${to.toString()}","departureTime":"07:30","arrivalTime":"08:45","departureDate":"${departureDate.toString()}","duration":"1h 15m","stops":0,"price":89,"availableSeats":45}""")
-            val response = SearchService.getFlights("$from", "$to", "$departureDate")
-            call.respond(response)
+            call.respond(
+                FlightService.searchFlights(
+                    from = call.request.queryParameters["from"],
+                    to = call.request.queryParameters["to"],
+                    departureDate = call.request.queryParameters["departureDate"]
+                )
+            )
         }
 
-        //Booking API
         get("/api/bookings") {
-            val response = BookingService.getAllBookings(1)
-            call.respond(response)
+            val rawUserId = call.request.queryParameters["userId"]
+            val userId = rawUserId?.toIntOrNull() ?: 1
+            if (rawUserId != null && rawUserId.toIntOrNull() == null) {
+                call.respond(
+                    status = HttpStatusCode.BadRequest,
+                    message = mapOf("error" to "Missing or invalid userId")
+                )
+                return@get
+            }
+
+            call.respond(BookingService.getAllBookings(userId))
         }
 
         get("/api/bookings/lookup") {
-            val ref = call.request.queryParameters["ref"]
-            val lastName = call.request.queryParameters["lastName"]
-            val response = BookingService.getBooking("$lastName", "$ref")
+            val ref = call.request.queryParameters["ref"]?.trim().orEmpty()
+            val lastName = call.request.queryParameters["lastName"]?.trim().orEmpty()
+            if (ref.isBlank() || lastName.isBlank()) {
+                call.respond(
+                    status = HttpStatusCode.BadRequest,
+                    message = mapOf("error" to "Missing ref or lastName")
+                )
+                return@get
+            }
+
+            val result = BookingService.getBooking(lastName = lastName, ref = ref)
+            if (result == null) {
+                call.respond(HttpStatusCode.NotFound, mapOf("error" to "Booking not found"))
+                return@get
+            }
+
+            call.respond(result)
         }
 
         post("/api/bookings") {
-            val request = call.receiveText()
-            val response = BookingService.newBooking(request)
-            call.respond(HttpStatusCode.Created, response)
+            val requestBody = call.receiveText().trim()
+            if (requestBody.isBlank()) {
+                call.respond(
+                    status = HttpStatusCode.BadRequest,
+                    message = mapOf("error" to "Request body cannot be empty")
+                )
+                return@post
+            }
+
+            try {
+                call.respond(
+                    status = HttpStatusCode.Created,
+                    message = BookingService.newBooking(requestBody)
+                )
+            } catch (_: SerializationException) {
+                call.respond(
+                    status = HttpStatusCode.BadRequest,
+                    message = mapOf("error" to "Invalid booking payload")
+                )
+            } catch (_: IllegalArgumentException) {
+                call.respond(
+                    status = HttpStatusCode.BadRequest,
+                    message = mapOf("error" to "Invalid booking payload")
+                )
+            }
         }
     }
 }

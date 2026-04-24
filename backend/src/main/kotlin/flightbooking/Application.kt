@@ -1,13 +1,26 @@
 package flightbooking
 
-import io.ktor.server.application.*
 import flightbooking.db.DatabaseFactory
+import flightbooking.service.SeedDataService
+import io.ktor.serialization.kotlinx.json.json
+import io.ktor.server.application.*
+import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 
 fun main(args: Array<String>) {
     io.ktor.server.netty.EngineMain.main(args)
 }
 
 fun Application.module() {
+    install(ContentNegotiation) {
+        json()
+    }
     DatabaseFactory.init(environment.config)
+    if (shouldRunSeed()) {
+        SeedDataService.seedAll()
+    }
     configureRouting()
 }
+
+private fun Application.shouldRunSeed(): Boolean =
+    environment.config.propertyOrNull("seed.runOnStartup")?.getString()?.toBooleanStrictOrNull() == true ||
+        System.getenv("RUN_CSV_SEED")?.toBooleanStrictOrNull() == true

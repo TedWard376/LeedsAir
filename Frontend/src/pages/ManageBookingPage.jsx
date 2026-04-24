@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { getBookingByRef } from "../services/api";
 import { LoadingSpinner, ErrorMessage } from "../components/StatusMessages";
 
 export function ManageBookingPage() {
@@ -14,15 +15,8 @@ export function ManageBookingPage() {
     setError(null);
     setBooking(null);
     try {
-      const res = await fetch(
-        `http://localhost:8080/api/bookings?ref=${encodeURIComponent(ref)}&lastName=${encodeURIComponent(lastName)}`
-      );
-      if (!res.ok) throw new Error("Booking not found. Please check your reference and surname.");
-      const data = await res.json();
-      // Backend may return array or single object
-      const found = Array.isArray(data) ? data[0] : data;
-      if (!found) throw new Error("Booking not found.");
-      setBooking(found);
+      const data = await getBookingByRef(ref, lastName);
+      setBooking(data);
     } catch (err) {
       setError(err.message);
     } finally {
