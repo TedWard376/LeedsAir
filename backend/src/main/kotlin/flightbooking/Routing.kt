@@ -1,5 +1,6 @@
 package flightbooking
 
+import flightbooking.service.AuthService
 import flightbooking.service.BookingService
 import flightbooking.service.FlightService
 import flightbooking.service.HomeService
@@ -30,6 +31,46 @@ fun Application.configureRouting() {
                     departureDate = call.request.queryParameters["departureDate"]
                 )
             )
+        }
+
+        post("/api/auth/register") {
+            val requestBody = call.receiveText().trim()
+            if (requestBody.isBlank()) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Request body cannot be empty"))
+                return@post
+            }
+
+            try {
+                call.respond(HttpStatusCode.Created, AuthService.register(requestBody))
+            } catch (_: SerializationException) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid auth payload"))
+            } catch (e: IllegalArgumentException) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to (e.message ?: "Invalid auth payload")))
+            }
+        }
+
+        post("/api/auth/login") {
+            val requestBody = call.receiveText().trim()
+            if (requestBody.isBlank()) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Request body cannot be empty"))
+                return@post
+            }
+
+            try {
+                call.respond(AuthService.login(requestBody))
+            } catch (_: SerializationException) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid auth payload"))
+            } catch (e: IllegalArgumentException) {
+                call.respond(HttpStatusCode.Unauthorized, mapOf("error" to (e.message ?: "Invalid email or password")))
+            }
+        }
+
+        get("/api/auth/profile") {
+            try {
+                call.respond(AuthService.getProfile(call.request.headers["Authorization"]))
+            } catch (e: IllegalArgumentException) {
+                call.respond(HttpStatusCode.Unauthorized, mapOf("error" to (e.message ?: "Unauthorized")))
+            }
         }
 
         get("/api/bookings") {
