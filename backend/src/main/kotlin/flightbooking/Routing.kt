@@ -93,5 +93,58 @@ fun Application.configureRouting() {
                 )
             }
         }
+
+        put("/api/bookings/{id}") {
+            val bookingId = call.parameters["id"]?.toIntOrNull()
+            if (bookingId == null) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Missing or invalid booking id"))
+                return@put
+            }
+
+            val requestBody = call.receiveText().trim()
+            if (requestBody.isBlank()) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Request body cannot be empty"))
+                return@put
+            }
+
+            try {
+                call.respond(BookingService.modifyBooking(bookingId, requestBody))
+            } catch (_: SerializationException) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid booking payload"))
+            } catch (e: IllegalArgumentException) {
+                val status = if (e.message == "Booking not found") HttpStatusCode.NotFound else HttpStatusCode.BadRequest
+                call.respond(status, mapOf("error" to (e.message ?: "Invalid booking payload")))
+            }
+        }
+
+        post("/api/bookings/{id}/cancel") {
+            val bookingId = call.parameters["id"]?.toIntOrNull()
+            if (bookingId == null) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Missing or invalid booking id"))
+                return@post
+            }
+
+            try {
+                call.respond(BookingService.cancelBooking(bookingId))
+            } catch (e: IllegalArgumentException) {
+                val status = if (e.message == "Booking not found") HttpStatusCode.NotFound else HttpStatusCode.BadRequest
+                call.respond(status, mapOf("error" to (e.message ?: "Unable to cancel booking")))
+            }
+        }
+
+        post("/api/bookings/{id}/checkin") {
+            val bookingId = call.parameters["id"]?.toIntOrNull()
+            if (bookingId == null) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Missing or invalid booking id"))
+                return@post
+            }
+
+            try {
+                call.respond(BookingService.checkInBooking(bookingId))
+            } catch (e: IllegalArgumentException) {
+                val status = if (e.message == "Booking not found") HttpStatusCode.NotFound else HttpStatusCode.BadRequest
+                call.respond(status, mapOf("error" to (e.message ?: "Unable to check in booking")))
+            }
+        }
     }
 }
