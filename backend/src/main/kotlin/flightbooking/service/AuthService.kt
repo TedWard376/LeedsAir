@@ -109,14 +109,18 @@ object AuthService {
     }
 
     fun getProfile(authorizationHeader: String?): AuthUser = transaction {
-        val token = extractBearerToken(authorizationHeader)
+        val userId = resolveUserIdFromAuthorization(authorizationHeader)
             ?: throw IllegalArgumentException("Missing or invalid Authorization header")
-        val userId = parseUserId(token) ?: throw IllegalArgumentException("Invalid token")
 
         val userRow = UsersTable.selectAll().firstOrNull { it[UsersTable.id] == userId }
             ?: throw IllegalArgumentException("Invalid token")
 
         userRow.toAuthUser()
+    }
+
+    fun resolveUserIdFromAuthorization(authorizationHeader: String?): Int? {
+        val token = extractBearerToken(authorizationHeader) ?: return null
+        return parseUserId(token)
     }
 
     private fun ResultRow.toAuthUser(): AuthUser {

@@ -2,8 +2,10 @@ package flightbooking
 
 import flightbooking.service.AuthService
 import flightbooking.service.BookingService
+import flightbooking.service.ComplaintService
 import flightbooking.service.FlightService
 import flightbooking.service.HomeService
+import flightbooking.service.LoyaltyService
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.*
 import io.ktor.server.request.receiveText
@@ -70,6 +72,46 @@ fun Application.configureRouting() {
                 call.respond(AuthService.getProfile(call.request.headers["Authorization"]))
             } catch (e: IllegalArgumentException) {
                 call.respond(HttpStatusCode.Unauthorized, mapOf("error" to (e.message ?: "Unauthorized")))
+            }
+        }
+
+        get("/api/loyalty") {
+            try {
+                call.respond(LoyaltyService.getLoyalty(call.request.headers["Authorization"]))
+            } catch (e: IllegalArgumentException) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to (e.message ?: "Unable to load loyalty account")))
+            }
+        }
+
+        post("/api/loyalty/redeem") {
+            val requestBody = call.receiveText().trim()
+            if (requestBody.isBlank()) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Request body cannot be empty"))
+                return@post
+            }
+
+            try {
+                call.respond(LoyaltyService.redeem(call.request.headers["Authorization"], requestBody))
+            } catch (_: SerializationException) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid loyalty payload"))
+            } catch (e: IllegalArgumentException) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to (e.message ?: "Unable to redeem reward")))
+            }
+        }
+
+        post("/api/complaints") {
+            val requestBody = call.receiveText().trim()
+            if (requestBody.isBlank()) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Request body cannot be empty"))
+                return@post
+            }
+
+            try {
+                call.respond(HttpStatusCode.Created, ComplaintService.submitComplaint(call.request.headers["Authorization"], requestBody))
+            } catch (_: SerializationException) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid complaint payload"))
+            } catch (e: IllegalArgumentException) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to (e.message ?: "Unable to submit complaint")))
             }
         }
 
