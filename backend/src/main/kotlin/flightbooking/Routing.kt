@@ -1,6 +1,7 @@
 package flightbooking
 
 import flightbooking.service.AuthService
+import flightbooking.service.AdminService
 import flightbooking.service.BookingService
 import flightbooking.service.ComplaintService
 import flightbooking.service.FlightService
@@ -112,6 +113,46 @@ fun Application.configureRouting() {
                 call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid complaint payload"))
             } catch (e: IllegalArgumentException) {
                 call.respond(HttpStatusCode.BadRequest, mapOf("error" to (e.message ?: "Unable to submit complaint")))
+            }
+        }
+
+        post("/api/admin/auth/login") {
+            val requestBody = call.receiveText().trim()
+            if (requestBody.isBlank()) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Request body cannot be empty"))
+                return@post
+            }
+
+            try {
+                call.respond(AdminService.login(requestBody))
+            } catch (_: SerializationException) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid admin payload"))
+            } catch (e: IllegalArgumentException) {
+                call.respond(HttpStatusCode.Unauthorized, mapOf("error" to (e.message ?: "Invalid admin credentials")))
+            }
+        }
+
+        get("/api/admin/bookings") {
+            try {
+                call.respond(AdminService.getBookings(call.request.headers["Authorization"]))
+            } catch (e: IllegalArgumentException) {
+                call.respond(HttpStatusCode.Unauthorized, mapOf("error" to (e.message ?: "Unauthorized")))
+            }
+        }
+
+        get("/api/admin/metrics") {
+            try {
+                call.respond(AdminService.getMetrics(call.request.headers["Authorization"]))
+            } catch (e: IllegalArgumentException) {
+                call.respond(HttpStatusCode.Unauthorized, mapOf("error" to (e.message ?: "Unauthorized")))
+            }
+        }
+
+        get("/api/admin/reports") {
+            try {
+                call.respond(AdminService.getReports(call.request.headers["Authorization"]))
+            } catch (e: IllegalArgumentException) {
+                call.respond(HttpStatusCode.Unauthorized, mapOf("error" to (e.message ?: "Unauthorized")))
             }
         }
 

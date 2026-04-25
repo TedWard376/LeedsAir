@@ -75,6 +75,8 @@ object BookingService {
         val from: String? = flight?.from,
         val to: String? = flight?.to,
         val departureDate: String? = flight?.departureDate,
+        val modificationRequested: String? = null,
+        val modificationRequestedAt: String? = null,
     )
 
     @OptIn(ExperimentalSerializationApi::class)
@@ -117,6 +119,12 @@ object BookingService {
             .sortedByDescending { it[BookingsTable.createdAt] }
 
         bookingRows.mapNotNull { row -> hydrateBooking(row) }
+    }
+
+    fun getAllBookingsForAdmin(): List<Booking> = transaction {
+        BookingsTable.selectAll()
+            .sortedByDescending { it[BookingsTable.createdAt] }
+            .mapNotNull { row -> hydrateBooking(row) }
     }
 
     fun getBooking(lastName: String, ref: String): Booking? = transaction {
@@ -367,6 +375,9 @@ object BookingService {
             ?.get(BookingFlightsTable.flightId)
 
         val flight = flightId?.let { loadFlightSummary(it) }
+        val latestModification = ModificationRequestsTable.selectAll()
+            .filter { it[ModificationRequestsTable.bookingId] == bookingId }
+            .maxByOrNull { it[ModificationRequestsTable.createdAt] }
 
         return Booking(
             id = bookingId,
@@ -378,12 +389,21 @@ object BookingService {
             seat = defaultSeatLabel,
             extras = emptyList(),
             totalPrice = bookingRow[BookingsTable.totalPrice].toDouble(),
-            status = bookingRow[BookingsTable.status].replaceFirstChar { it.uppercase() },
+            status = displayStatus(bookingRow[BookingsTable.status]),
             checkedIn = bookingRow[BookingsTable.status] == checkedInBookingStatus,
             createdAt = bookingRow[BookingsTable.createdAt].toString(),
             passenger = passenger,
             flight = flight,
+            modificationRequested = latestModification?.get(ModificationRequestsTable.requestType)?.replaceFirstChar { it.uppercase() },
+            modificationRequestedAt = latestModification?.get(ModificationRequestsTable.createdAt)?.toString(),
         )
+    }
+
+    private fun displayStatus(status: String): String = when (status.lowercase()) {
+        checkedInBookingStatus -> "CheckedIn"
+        cancelledBookingStatus -> "Cancelled"
+        defaultBookingStatus -> "Confirmed"
+        else -> status.replaceFirstChar { it.uppercase() }
     }
 
     private fun loadFlightSummary(flightId: Int): BookingFlightSummary? {
