@@ -35,12 +35,28 @@ The backend currently exposes these routes:
 ```text
 GET  /api/home
 GET  /api/flights?from=LBA&to=DUB&departureDate=2026-04-15
+
+POST /api/auth/register
+POST /api/auth/login
+GET  /api/auth/profile
+
 GET  /api/bookings?userId=1
 GET  /api/bookings/lookup?ref=LEEDS1A&lastName=Smith
 POST /api/bookings
-```
+PUT  /api/bookings/{id}
+POST /api/bookings/{id}/cancel
+POST /api/bookings/{id}/checkin
 
-The frontend already references additional routes for auth, admin, loyalty, complaints, check-in, cancellation, and booking updates. Those are still to be implemented.
+GET  /api/loyalty
+POST /api/loyalty/redeem
+
+POST /api/complaints
+
+POST /api/admin/auth/login
+GET  /api/admin/bookings
+GET  /api/admin/metrics
+GET  /api/admin/reports
+```
 
 ## Running The App
 
@@ -69,6 +85,11 @@ cd backend
 ./gradlew test
 ```
 
+Current backend tests cover:
+
+- CSV flight schedule loading
+- admin login token generation and validation
+
 ## Data And Database
 
 - Flyway migrations live in `backend/src/main/resources/db/migration/`
@@ -76,9 +97,17 @@ cd backend
 - Startup seeding runs when `seed.runOnStartup=true` or `RUN_CSV_SEED=true`
 - Flight schedule data is loaded from `FlightSchedule.csv`
 
-## Current Backend Priorities
+## Admin Access
 
-1. Complete booking lifecycle routes for modify, cancel, and check-in
-2. Add auth endpoints for register, login, and profile
-3. Add complaints, loyalty, and admin APIs
-4. Expand automated backend tests around the main flows
+The admin API uses a lightweight token-based login for now.
+
+- Default username: `admin`
+- Default password: `admin12345`
+- Override with `ADMIN_USERNAME` and `ADMIN_PASSWORD`
+
+## Backend Notes
+
+- Auth currently uses lightweight bearer tokens and SHA-256 password hashing for this project
+- Loyalty and complaints support the existing frontend pages
+- Admin metrics and reports are derived from booking data already stored in the database
+- The next improvements would be deeper integration tests and stronger production-grade auth
