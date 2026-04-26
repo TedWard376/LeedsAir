@@ -30,11 +30,19 @@ object SeedDataService {
     private const val scheduledFlightHorizonDays = 90
     private val scheduleTimeFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("H:mm")
 
+    fun isSeedRequired(): Boolean = transaction {
+        val hasSchedules = FlightSchedulesTable.selectAll().limit(1).any()
+        val hasScheduledFlights = ScheduledFlightsTable.selectAll().limit(1).any()
+        !hasSchedules || !hasScheduledFlights
+    }
+
     fun seedAll() {
         val schedules = FlightScheduleLoader.loadFromCsv()
+        println("SeedDataService: seeding ${schedules.size} flight schedules from CSV")
         seedAirports(schedules)
         seedFlightSchedules(schedules)
         seedScheduledFlights()
+        println("SeedDataService: seed complete")
     }
 
     private fun seedAirports(schedules: List<FlightScheduleRow>) {

@@ -15,7 +15,7 @@ fun Application.module() {
         json()
     }
     DatabaseFactory.init(environment.config)
-    if (shouldRunSeed()) {
+    if (shouldRunSeed() || SeedDataService.isSeedRequired()) {
         SeedDataService.seedAll()
     }
     configureRouting()
