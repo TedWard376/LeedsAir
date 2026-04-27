@@ -20,6 +20,13 @@ export function RewardsPage({ onNavigate }) {
   const [redeemSuccess, setRedeemSuccess] = useState(null);
 
   useEffect(() => {
+    if (!user) {
+      setLoyalty(null);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+
     let cancelled = false;
     async function fetch() {
       try {
@@ -33,7 +40,7 @@ export function RewardsPage({ onNavigate }) {
     }
     fetch();
     return () => { cancelled = true; };
-  }, []);
+  }, [user]);
 
   async function handleRedeem(reward) {
     setRedeeming(reward.id);
@@ -61,10 +68,17 @@ export function RewardsPage({ onNavigate }) {
       </div>
 
       <div className="rewards-body">
+        {!user && !loading && (
+          <div className="empty-state">
+            <span className="empty-icon">⭐</span>
+            <p>Sign in to view your points balance and redeem rewards.</p>
+            <button className="search-btn" onClick={() => onNavigate("login")}>Sign In</button>
+          </div>
+        )}
         {loading && <LoadingSpinner message="Loading your rewards..." />}
         {error && <ErrorMessage message={error} />}
 
-        {!loading && !error && (
+        {user && !loading && !error && (
           <>
             <div className="points-card">
               <div className="points-tier" style={{ color: tierColor }}>

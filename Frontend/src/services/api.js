@@ -1,8 +1,8 @@
 const BASE_URL = "/api";
 
 // ── Helpers ──────────────────────────────────────────────
-async function request(path, options = {}) {
-  const token = localStorage.getItem("adminToken")
+async function request(path, options = {}, authTokenKey = "token") {
+  const token = authTokenKey ? localStorage.getItem(authTokenKey) : null;
   const headers = { "Content-Type": "application/json", ...options.headers };
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
@@ -82,23 +82,12 @@ export async function submitComplaint(data) {
 
 // ── Admin-specific request (uses adminToken) ──────────────
 async function adminRequest(path, options = {}) {
-  const token = localStorage.getItem("adminToken");
-  const headers = { "Content-Type": "application/json", ...options.headers };
-  if (token) headers["Authorization"] = `Bearer ${token}`;
-
-  const res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
-  if (!res.ok) {
-    let message = `Request failed (${res.status})`;
-    try { const err = await res.json(); message = err.message || message; } catch {}
-    throw new Error(message);
-  }
-  if (res.status === 204) return null;
-  return res.json();
+  return request(path, options, "adminToken");
 }
 
 // ── Admin ─────────────────────────────────────────────────
 export async function adminLogin(username, password) {
-  return adminRequest("/admin/auth/login", { method: "POST", body: JSON.stringify({ username, password }) });
+  return request("/admin/auth/login", { method: "POST", body: JSON.stringify({ username, password }) }, null);
 }
 
 export async function adminGetBookings(filters = {}) {

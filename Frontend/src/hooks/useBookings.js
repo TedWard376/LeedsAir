@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { getBookings, createBooking } from "../services/api";
 
-export function useBookings(userId = 1) {
+export function useBookings(userId = null) {
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -9,6 +9,13 @@ export function useBookings(userId = 1) {
   const [submitError, setSubmitError] = useState(null);
 
   useEffect(() => {
+    if (!userId) {
+      setBookings([]);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+
     let cancelled = false;
 
     async function fetchBookings() {
