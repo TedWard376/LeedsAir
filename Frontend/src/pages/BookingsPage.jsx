@@ -28,9 +28,30 @@ function BookingRow({ booking }) {
   );
 }
 
-export function BookingsPage() {
-  const { user } = useAuth();
-  const { bookings, loading, error } = useBookings(user?.id ?? 1);
+export function BookingsPage({ onNavigate }) {
+  const { user, authLoading } = useAuth();
+  const { bookings, loading, error } = useBookings(user?.id);
+
+  if (authLoading) {
+    return <LoadingSpinner message="Restoring your bookings..." />;
+  }
+
+  if (!user) {
+    return (
+      <div className="page bookings-page">
+        <div className="page-header">
+          <h1>My Bookings</h1>
+          <p>Sign in to view and manage your reservations.</p>
+        </div>
+
+        <div className="empty-state">
+          <span className="empty-icon">🗂</span>
+          <p>You need to be signed in to see your bookings.</p>
+          <button className="search-btn" onClick={() => onNavigate("login")}>Sign In</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="page bookings-page">
