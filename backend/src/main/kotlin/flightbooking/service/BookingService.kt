@@ -4,6 +4,7 @@ import flightbooking.db.table.AirportsTable
 import flightbooking.db.table.BookingFlightsTable
 import flightbooking.db.table.BookingsTable
 import flightbooking.db.table.FlightSchedulesTable
+import flightbooking.db.table.ModificationRequestsTable
 import flightbooking.db.table.PassengersTable
 import flightbooking.db.table.ScheduledFlightsTable
 import flightbooking.db.table.UsersTable
@@ -27,6 +28,8 @@ object BookingService {
 
     private const val defaultUserId = 1
     private const val defaultBookingStatus = "confirmed"
+    private const val cancelledBookingStatus = "cancelled"
+    private const val checkedInBookingStatus = "checked_in"
     private const val defaultTravelClass = "Economy"
     private const val defaultSeatLabel = "Auto-assigned"
 
@@ -65,12 +68,15 @@ object BookingService {
         val extras: List<String> = emptyList(),
         val totalPrice: Double,
         val status: String,
+        val checkedIn: Boolean = false,
         val createdAt: String,
         val passenger: Passenger,
         val flight: BookingFlightSummary? = null,
         val from: String? = flight?.from,
         val to: String? = flight?.to,
         val departureDate: String? = flight?.departureDate,
+        val modificationRequested: String? = null,
+        val modificationRequestedAt: String? = null,
     )
 
     @OptIn(ExperimentalSerializationApi::class)
@@ -87,12 +93,38 @@ object BookingService {
         val passengers: List<Passenger> = emptyList(),
     )
 
+    @OptIn(ExperimentalSerializationApi::class)
+    @Serializable
+    @JsonIgnoreUnknownKeys
+    data class BookingModifyRequest(
+        val totalPrice: Double? = null,
+        val status: String? = null,
+        val description: String? = null,
+        val requestType: String? = null,
+    )
+
+    @Serializable
+    data class BoardingPass(
+        val bookingId: Int,
+        val bookingReference: String,
+        val seat: String,
+        val gate: String,
+        val boardingTime: String,
+        val status: String,
+    )
+
     fun getAllBookings(userId: Int): List<Booking> = transaction {
         val bookingRows = BookingsTable.selectAll()
             .filter { it[BookingsTable.userId] == userId }
             .sortedByDescending { it[BookingsTable.createdAt] }
 
         bookingRows.mapNotNull { row -> hydrateBooking(row) }
+    }
+
+    fun getAllBookingsForAdmin(): List<Booking> = transaction {
+        BookingsTable.selectAll()
+            .sortedByDescending { it[BookingsTable.createdAt] }
+            .mapNotNull { row -> hydrateBooking(row) }
     }
 
     fun getBooking(lastName: String, ref: String): Booking? = transaction {
@@ -154,6 +186,121 @@ object BookingService {
         }
 
         hydrateBookingById(bookingId) ?: throw IllegalStateException("Booking was created but could not be loaded")
+    }
+
+    fun cancelBooking(bookingId: Int): Booking = transaction {
+        val bookingRow = loadBookingRowOrThrow(bookingId)
+        val currentStatus = bookingRow[BookingsTable.status]
+
+        if (currentStatus == cancelledBookingStatus) {
+            return@transaction hydrateBooking(bookingRow)
+                ?: throw IllegalStateException("Cancelled booking could not be loaded")
+        }
+
+        if (currentStatus == checkedInBookingStatus) {
+            throw IllegalArgumentException("Checked-in bookings cannot be cancelled")
+        }
+
+        restoreSeatsForBooking(bookingId)
+        updateBookingStatus(bookingId, cancelledBookingStatus)
+
+        hydrateBookingById(bookingId) ?: throw IllegalStateException("Cancelled booking could not be loaded")
+    }
+
+    fun checkInBooking(bookingId: Int): BoardingPass = transaction {
+        val bookingRow = loadBookingRowOrThrow(bookingId)
+        val currentStatus = bookingRow[BookingsTable.status]
+
+        if (currentStatus == cancelledBookingStatus) {
+            throw IllegalArgumentException("Cancelled bookings cannot be checked in")
+        }
+
+        if (currentStatus != checkedInBookingStatus) {
+            updateBookingStatus(bookingId, checkedInBookingStatus)
+        }
+
+        val hydrated = hydrateBookingById(bookingId)
+            ?: throw IllegalStateException("Checked-in booking could not be loaded")
+
+        val departureTime = hydrated.flight?.departureTime ?: "00:00"
+        val boardingTime = runCatching {
+            java.time.LocalTime.parse(departureTime).minusMinutes(45).toString()
+        }.getOrElse { "00:00" }
+
+        BoardingPass(
+            bookingId = hydrated.id,
+            bookingReference = hydrated.bookingReference,
+            seat = defaultSeatLabel,
+            gate = generateGate(hydrated.id),
+            boardingTime = boardingTime,
+            status = "Checked In",
+        )
+    }
+
+    fun modifyBooking(bookingId: Int, requestBody: String): Booking = transaction {
+        val bookingRow = loadBookingRowOrThrow(bookingId)
+        val currentStatus = bookingRow[BookingsTable.status]
+        if (currentStatus == cancelledBookingStatus) {
+            throw IllegalArgumentException("Cancelled bookings cannot be modified")
+        }
+
+        val request = json.decodeFromString<BookingModifyRequest>(requestBody)
+
+        if (request.totalPrice != null) {
+            BookingsTable.update({ BookingsTable.id eq bookingId }) { row ->
+                row[totalPrice] = BigDecimal.valueOf(request.totalPrice).setScale(2)
+            }
+        }
+
+        val normalizedStatus = request.status?.trim()?.lowercase()
+        if (!normalizedStatus.isNullOrBlank()) {
+            updateBookingStatus(bookingId, normalizedStatus)
+        }
+
+        ModificationRequestsTable.insert { row ->
+            row[ModificationRequestsTable.bookingId] = bookingId
+            row[requestType] = request.requestType?.trim().takeUnless { it.isNullOrBlank() } ?: "general"
+            row[description] = request.description?.trim().takeUnless { it.isNullOrBlank() }
+            row[status] = "processed"
+            row[createdAt] = LocalDateTime.now()
+            row[processedBy] = null
+        }
+
+        hydrateBookingById(bookingId) ?: throw IllegalStateException("Modified booking could not be loaded")
+    }
+
+    private fun loadBookingRowOrThrow(bookingId: Int): ResultRow {
+        return BookingsTable.selectAll().firstOrNull { it[BookingsTable.id] == bookingId }
+            ?: throw IllegalArgumentException("Booking not found")
+    }
+
+    private fun updateBookingStatus(bookingId: Int, status: String) {
+        BookingsTable.update({ BookingsTable.id eq bookingId }) { row ->
+            row[BookingsTable.status] = status
+        }
+    }
+
+    private fun restoreSeatsForBooking(bookingId: Int) {
+        val flightId = BookingFlightsTable.selectAll()
+            .firstOrNull { it[BookingFlightsTable.bookingId] == bookingId }
+            ?.get(BookingFlightsTable.flightId)
+            ?: return
+
+        val passengerCount = PassengersTable.selectAll().count { it[PassengersTable.bookingId] == bookingId }
+        val scheduledFlightRow = ScheduledFlightsTable.selectAll()
+            .firstOrNull { it[ScheduledFlightsTable.id] == flightId }
+            ?: return
+
+        val currentAvailableSeats = scheduledFlightRow[ScheduledFlightsTable.availableSeats] ?: return
+        ScheduledFlightsTable.update({ ScheduledFlightsTable.id eq flightId }) { row ->
+            row[availableSeats] = currentAvailableSeats + passengerCount
+        }
+    }
+
+    private fun generateGate(bookingId: Int): String {
+        val gateLetter = ('A'.code + (bookingId % 6)).toChar()
+        val gateNumber = 1 + (bookingId % 24)
+        return "$gateLetter$gateNumber"
     }
 
     private fun reserveSeats(flightId: Int, seatsRequested: Int) {
@@ -228,6 +375,9 @@ object BookingService {
             ?.get(BookingFlightsTable.flightId)
 
         val flight = flightId?.let { loadFlightSummary(it) }
+        val latestModification = ModificationRequestsTable.selectAll()
+            .filter { it[ModificationRequestsTable.bookingId] == bookingId }
+            .maxByOrNull { it[ModificationRequestsTable.createdAt] }
 
         return Booking(
             id = bookingId,
@@ -239,11 +389,21 @@ object BookingService {
             seat = defaultSeatLabel,
             extras = emptyList(),
             totalPrice = bookingRow[BookingsTable.totalPrice].toDouble(),
-            status = bookingRow[BookingsTable.status].replaceFirstChar { it.uppercase() },
+            status = displayStatus(bookingRow[BookingsTable.status]),
+            checkedIn = bookingRow[BookingsTable.status] == checkedInBookingStatus,
             createdAt = bookingRow[BookingsTable.createdAt].toString(),
             passenger = passenger,
             flight = flight,
+            modificationRequested = latestModification?.get(ModificationRequestsTable.requestType)?.replaceFirstChar { it.uppercase() },
+            modificationRequestedAt = latestModification?.get(ModificationRequestsTable.createdAt)?.toString(),
         )
+    }
+
+    private fun displayStatus(status: String): String = when (status.lowercase()) {
+        checkedInBookingStatus -> "CheckedIn"
+        cancelledBookingStatus -> "Cancelled"
+        defaultBookingStatus -> "Confirmed"
+        else -> status.replaceFirstChar { it.uppercase() }
     }
 
     private fun loadFlightSummary(flightId: Int): BookingFlightSummary? {

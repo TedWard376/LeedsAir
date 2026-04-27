@@ -8,9 +8,10 @@ import kotlinx.serialization.Serializable
 import org.jetbrains.exposed.sql.ResultRow
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
-import java.time.LocalDate
 import java.time.Duration
+import java.time.LocalDate
 import java.time.format.DateTimeParseException
+import kotlin.math.roundToInt
 
 @Serializable
 data class FlightResponse(
@@ -90,7 +91,7 @@ object FlightService {
             departureDate = departureDateTime.toLocalDate().toString(),
             duration = formatDuration(departureDateTime, arrivalDateTime),
             stops = schedule[FlightSchedulesTable.stops],
-            price = row[ScheduledFlightsTable.basePrice].toInt(),
+            price = row[ScheduledFlightsTable.basePrice].toDouble().roundToInt(),
             availableSeats = row[ScheduledFlightsTable.availableSeats] ?: aircraftSeats ?: 180
         )
     }
