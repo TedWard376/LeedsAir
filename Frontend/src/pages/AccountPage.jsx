@@ -3,12 +3,33 @@ import { useBookings } from "../hooks/useBookings";
 import { LoadingSpinner, ErrorMessage } from "../components/StatusMessages";
 
 export function AccountPage({ onNavigate }) {
-  const { user, logoutUser } = useAuth();
-  const { bookings, loading, error } = useBookings(user?.id ?? 1);
+  const { user, authLoading, logoutUser } = useAuth();
+  const { bookings, loading, error } = useBookings(user?.id);
 
   function handleLogout() {
     logoutUser();
     onNavigate("home");
+  }
+
+  if (authLoading) {
+    return <LoadingSpinner message="Restoring your account..." />;
+  }
+
+  if (!user) {
+    return (
+      <div className="page account-page">
+        <div className="page-header">
+          <h1>Account</h1>
+          <p>Sign in to view your profile, bookings, and rewards.</p>
+        </div>
+
+        <div className="empty-state">
+          <span className="empty-icon">👤</span>
+          <p>You need to be signed in to access your account.</p>
+          <button className="search-btn" onClick={() => onNavigate("login")}>Sign In</button>
+        </div>
+      </div>
+    );
   }
 
   const upcoming = bookings.filter((b) => b.status !== "Cancelled");

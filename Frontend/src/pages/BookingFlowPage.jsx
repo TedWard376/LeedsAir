@@ -231,6 +231,21 @@ function paxLabel(pax, idx) {
 export function BookingFlowPage({ flight, onNavigate, onComplete }) {
   const { user } = useAuth();
   const [step, setStep] = useState(0);
+  if (!flight) {
+    return (
+      <div className="page booking-flow-page">
+        <div className="page-header">
+          <h1>Booking</h1>
+          <p>Select a flight before continuing to passenger details and payment.</p>
+        </div>
+        <div className="empty-state">
+          <span className="empty-icon">✈</span>
+          <p>Your booking selection could not be loaded.</p>
+          <button className="search-btn" onClick={() => onNavigate("home")}>Back to search</button>
+        </div>
+      </div>
+    );
+  }
 
   // ── Multi-passenger state ─────────────────────────────
   const [passengers, setPassengers] = useState(() => buildPassengers(flight, user));

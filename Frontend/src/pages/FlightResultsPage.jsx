@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useFlights } from "../hooks/useFlights";
+import { buildApiUrl } from "../services/api";
 import { LoadingSpinner, ErrorMessage } from "../components/StatusMessages";
 
 // ── Progress stepper ──────────────────────────────────────
@@ -59,7 +60,7 @@ function useDatePrices(from, to, centerDate, windowDays = 3) {
 
     Promise.all(
       dates.map(date =>
-        fetch(`/api/flights?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&departureDate=${date}`)
+        fetch(buildApiUrl(`/flights?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&departureDate=${date}`))
           .then(r => r.ok ? r.json() : [])
           .then(flights => [date, flights?.length ? Math.min(...flights.map(f => f.price)) : null])
           .catch(() => [date, null])

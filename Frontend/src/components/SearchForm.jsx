@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { buildApiUrl } from "../services/api";
 
 // ── Airport data ──────────────────────────────────────────
 const AIRPORTS = [
@@ -51,7 +52,7 @@ function useMonthPrices(from, to, year, month) {
 
     Promise.all(
       dates.map(date =>
-        fetch(`/api/flights?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&departureDate=${date}`)
+        fetch(buildApiUrl(`/flights?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&departureDate=${date}`))
           .then(r => r.ok ? r.json() : [])
           .then(flights => {
             if (flights && flights.length > 0) {

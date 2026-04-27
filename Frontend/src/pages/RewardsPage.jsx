@@ -4,15 +4,15 @@ import { LoadingSpinner, ErrorMessage } from "../components/StatusMessages";
 import { useAuth } from "../context/AuthContext";
 
 const REWARDS = [
-  { id: "voucher_10", label: "£10 Discount Voucher", points: 500, icon: "🏷️" },
-  { id: "voucher_25", label: "£25 Discount Voucher", points: 1200, icon: "🏷️" },
-  { id: "luggage",    label: "Free Extra Luggage",   points: 800,  icon: "🧳" },
-  { id: "upgrade",    label: "Seat Upgrade",          points: 1500, icon: "💺" },
-  { id: "lounge",     label: "Airport Lounge Pass",   points: 2000, icon: "🛋️" },
+  { id: "voucher_10", label: "Â£10 Discount Voucher", points: 500, icon: "ðŸ·ï¸" },
+  { id: "voucher_25", label: "Â£25 Discount Voucher", points: 1200, icon: "ðŸ·ï¸" },
+  { id: "luggage",    label: "Free Extra Luggage",   points: 800,  icon: "ðŸ§³" },
+  { id: "upgrade",    label: "Seat Upgrade",         points: 1500, icon: "ðŸ’º" },
+  { id: "lounge",     label: "Airport Lounge Pass",  points: 2000, icon: "ðŸ›‹ï¸" },
 ];
 
 export function RewardsPage({ onNavigate }) {
-  const { user } = useAuth();
+  const { user, authLoading } = useAuth();
   const [loyalty, setLoyalty] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -20,6 +20,18 @@ export function RewardsPage({ onNavigate }) {
   const [redeemSuccess, setRedeemSuccess] = useState(null);
 
   useEffect(() => {
+    if (authLoading) {
+      setLoading(true);
+      return;
+    }
+
+    if (!user) {
+      setLoyalty(null);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+
     let cancelled = false;
     async function fetch() {
       try {
@@ -33,7 +45,7 @@ export function RewardsPage({ onNavigate }) {
     }
     fetch();
     return () => { cancelled = true; };
-  }, []);
+  }, [authLoading, user]);
 
   async function handleRedeem(reward) {
     setRedeeming(reward.id);
@@ -61,14 +73,22 @@ export function RewardsPage({ onNavigate }) {
       </div>
 
       <div className="rewards-body">
-        {loading && <LoadingSpinner message="Loading your rewards..." />}
+        {authLoading && <LoadingSpinner message="Restoring your rewards..." />}
+        {!authLoading && !user && !loading && (
+          <div className="empty-state">
+            <span className="empty-icon">â­</span>
+            <p>Sign in to view your points balance and redeem rewards.</p>
+            <button className="search-btn" onClick={() => onNavigate("login")}>Sign In</button>
+          </div>
+        )}
+        {!authLoading && loading && <LoadingSpinner message="Loading your rewards..." />}
         {error && <ErrorMessage message={error} />}
 
-        {!loading && !error && (
+        {!authLoading && user && !loading && !error && (
           <>
             <div className="points-card">
               <div className="points-tier" style={{ color: tierColor }}>
-                ★ {tier} Member
+                â˜… {tier} Member
               </div>
               <div className="points-value">{points.toLocaleString()}</div>
               <div className="points-label">Available Points</div>
@@ -96,9 +116,9 @@ export function RewardsPage({ onNavigate }) {
 
             {redeemSuccess && (
               <div className="confirmation-banner" style={{ marginBottom: "1.5rem" }}>
-                <span className="confirm-icon">✓</span>
+                <span className="confirm-icon">âœ“</span>
                 <p>{redeemSuccess}</p>
-                <button className="dismiss-btn" onClick={() => setRedeemSuccess(null)}>×</button>
+                <button className="dismiss-btn" onClick={() => setRedeemSuccess(null)}>Ã—</button>
               </div>
             )}
 
@@ -127,21 +147,21 @@ export function RewardsPage({ onNavigate }) {
               <h2>How to earn points</h2>
               <div className="earning-rules">
                 <div className="earning-rule">
-                  <span>✈</span>
+                  <span>âœˆ</span>
                   <div>
                     <strong>Economy flights</strong>
-                    <p>Earn 1 point per £1 spent</p>
+                    <p>Earn 1 point per Â£1 spent</p>
                   </div>
                 </div>
                 <div className="earning-rule">
-                  <span>💺</span>
+                  <span>ðŸ’º</span>
                   <div>
                     <strong>Business class</strong>
-                    <p>Earn 2 points per £1 spent (double bonus)</p>
+                    <p>Earn 2 points per Â£1 spent (double bonus)</p>
                   </div>
                 </div>
                 <div className="earning-rule">
-                  <span>🎁</span>
+                  <span>ðŸŽ</span>
                   <div>
                     <strong>First booking bonus</strong>
                     <p>500 bonus points on your first flight</p>

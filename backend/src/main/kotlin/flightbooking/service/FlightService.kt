@@ -1,11 +1,15 @@
 package flightbooking.service
 
-import flightbooking.db.table.AircraftTable
 import flightbooking.db.table.AirportsTable
 import flightbooking.db.table.FlightSchedulesTable
 import flightbooking.db.table.ScheduledFlightsTable
 import kotlinx.serialization.Serializable
 import org.jetbrains.exposed.sql.ResultRow
+import org.jetbrains.exposed.sql.andWhere
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.greaterEq
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.inList
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.less
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
 import java.time.Duration
@@ -41,11 +45,36 @@ object FlightService {
             }
         }
 
-        val airportsById = AirportsTable.selectAll().associateBy { it[AirportsTable.id] }
-        val aircraftById = AircraftTable.selectAll().associateBy { it[AircraftTable.id] }
-        val schedulesById = FlightSchedulesTable.selectAll().associateBy { it[FlightSchedulesTable.id] }
+        val airportsByCode = AirportsTable.selectAll().associateBy { it[AirportsTable.code].uppercase() }
+        val departureAirportId = normalizedFrom?.let { code -> airportsByCode[code]?.get(AirportsTable.id) }
+        val arrivalAirportId = normalizedTo?.let { code -> airportsByCode[code]?.get(AirportsTable.id) }
 
-        ScheduledFlightsTable.selectAll()
+        if (normalizedFrom != null && departureAirportId == null) return@transaction emptyList()
+        if (normalizedTo != null && arrivalAirportId == null) return@transaction emptyList()
+
+        val scheduleQuery = FlightSchedulesTable.selectAll()
+        if (departureAirportId != null) {
+            scheduleQuery.andWhere { FlightSchedulesTable.departureAirportId eq departureAirportId }
+        }
+        if (arrivalAirportId != null) {
+            scheduleQuery.andWhere { FlightSchedulesTable.arrivalAirportId eq arrivalAirportId }
+        }
+
+        val schedulesById = scheduleQuery.toList().associateBy { it[FlightSchedulesTable.id] }
+        if (schedulesById.isEmpty()) return@transaction emptyList()
+
+        val scheduledFlightsQuery = ScheduledFlightsTable.selectAll()
+            .andWhere { ScheduledFlightsTable.scheduleId inList schedulesById.keys.toList() }
+
+        if (parsedDate != null) {
+            val startOfDay = parsedDate.atStartOfDay()
+            val nextDay = parsedDate.plusDays(1).atStartOfDay()
+            scheduledFlightsQuery.andWhere { ScheduledFlightsTable.departureTime greaterEq startOfDay }
+            scheduledFlightsQuery.andWhere { ScheduledFlightsTable.departureTime less nextDay }
+        }
+
+        val airportsById = AirportsTable.selectAll().associateBy { it[AirportsTable.id] }
+        scheduledFlightsQuery
             .mapNotNull { row ->
                 val schedule = schedulesById[row[ScheduledFlightsTable.scheduleId]] ?: return@mapNotNull null
                 val departureAirport = airportsById[schedule[FlightSchedulesTable.departureAirportId]] ?: return@mapNotNull null
@@ -53,18 +82,11 @@ object FlightService {
                 val departureCode = departureAirport[AirportsTable.code].uppercase()
                 val arrivalCode = arrivalAirport[AirportsTable.code].uppercase()
 
-                if (normalizedFrom != null && departureCode != normalizedFrom) return@mapNotNull null
-                if (normalizedTo != null && arrivalCode != normalizedTo) return@mapNotNull null
-
-                val departureDateValue = row[ScheduledFlightsTable.departureTime].toLocalDate()
-                if (parsedDate != null && departureDateValue != parsedDate) return@mapNotNull null
-
                 buildFlightResponse(
                     row = row,
                     schedule = schedule,
                     departureCode = departureCode,
-                    arrivalCode = arrivalCode,
-                    aircraftSeats = aircraftById[row[ScheduledFlightsTable.aircraftId]]?.get(AircraftTable.totalSeats)
+                    arrivalCode = arrivalCode
                 )
             }
             .sortedWith(compareBy<FlightResponse> { it.departureDate }.thenBy { it.departureTime }.thenBy { it.flightNumber })
@@ -74,8 +96,7 @@ object FlightService {
         row: ResultRow,
         schedule: ResultRow,
         departureCode: String,
-        arrivalCode: String,
-        aircraftSeats: Int?
+        arrivalCode: String
     ): FlightResponse {
         val departureDateTime = row[ScheduledFlightsTable.departureTime]
         val arrivalDateTime = row[ScheduledFlightsTable.arrivalTime]
@@ -92,7 +113,7 @@ object FlightService {
             duration = formatDuration(departureDateTime, arrivalDateTime),
             stops = schedule[FlightSchedulesTable.stops],
             price = row[ScheduledFlightsTable.basePrice].toDouble().roundToInt(),
-            availableSeats = row[ScheduledFlightsTable.availableSeats] ?: aircraftSeats ?: 180
+            availableSeats = row[ScheduledFlightsTable.availableSeats] ?: 180
         )
     }
 
