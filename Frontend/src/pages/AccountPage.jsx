@@ -3,12 +3,16 @@ import { useBookings } from "../hooks/useBookings";
 import { LoadingSpinner, ErrorMessage } from "../components/StatusMessages";
 
 export function AccountPage({ onNavigate }) {
-  const { user, logoutUser } = useAuth();
+  const { user, authLoading, logoutUser } = useAuth();
   const { bookings, loading, error } = useBookings(user?.id);
 
   function handleLogout() {
     logoutUser();
     onNavigate("home");
+  }
+
+  if (authLoading) {
+    return <LoadingSpinner message="Restoring your account..." />;
   }
 
   if (!user) {

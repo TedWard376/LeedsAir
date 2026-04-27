@@ -29,8 +29,12 @@ function BookingRow({ booking }) {
 }
 
 export function BookingsPage({ onNavigate }) {
-  const { user } = useAuth();
+  const { user, authLoading } = useAuth();
   const { bookings, loading, error } = useBookings(user?.id);
+
+  if (authLoading) {
+    return <LoadingSpinner message="Restoring your bookings..." />;
+  }
 
   if (!user) {
     return (

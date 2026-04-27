@@ -1,4 +1,8 @@
-const BASE_URL = "/api";
+export const BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8080/api";
+
+export function buildApiUrl(path) {
+  return `${BASE_URL}${path}`;
+}
 
 // ── Helpers ──────────────────────────────────────────────
 async function request(path, options = {}, authTokenKey = "token") {
@@ -6,7 +10,7 @@ async function request(path, options = {}, authTokenKey = "token") {
   const headers = { "Content-Type": "application/json", ...options.headers };
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
-  const res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
+  const res = await fetch(buildApiUrl(path), { ...options, headers });
   if (!res.ok) {
     let message = `Request failed (${res.status})`;
     try {
