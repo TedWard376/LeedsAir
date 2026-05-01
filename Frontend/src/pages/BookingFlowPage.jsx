@@ -303,11 +303,31 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
   async function handlePay() {
     setSubmitting(true); setSubmitErr(null);
     try {
+      const expiryParts = cardExp.split("/").map(part => part.trim());
+      const expiryMonth = Number(expiryParts[0]);
+      const expiryYear = expiryParts[1]
+        ? Number(expiryParts[1].length === 2 ? `20${expiryParts[1]}` : expiryParts[1])
+        : NaN;
+
+      if (!cardNum.trim() || !cardName.trim() || !cardCvv.trim() || !Number.isFinite(expiryMonth) || !Number.isFinite(expiryYear)) {
+        setSubmitErr("Please enter valid payment details before confirming your booking.");
+        setSubmitting(false);
+        return;
+      }
+
       const booking = await createBooking({
         flightId: flight.id, travelClass: flight.travelClass,
         seats, extras, totalPrice: total, passengers,
         // legacy single-passenger field for server compat
         passenger: passengers[0],
+        payment: {
+          cardholderName: cardName,
+          cardNumber: cardNum,
+          expiryMonth,
+          expiryYear,
+          cvv: cardCvv,
+          billingPostalCode: "",
+        },
       });
       onComplete(booking);
     } catch (err) { setSubmitErr(err.message); }
@@ -649,7 +669,7 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
 
           {/* Payment */}
           <div className="payment-section">
-            <h3>Payment</h3>
+            <h3>Payment Details</h3>
             <div className="form-row">
               <div className="form-group" style={{flex:2}}>
                 <label>Card number</label>
