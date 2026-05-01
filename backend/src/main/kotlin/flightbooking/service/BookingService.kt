@@ -206,6 +206,16 @@ object BookingService {
             payment = request.payment
         )
 
+        val requestedUserId = request.userId?.takeIf { it > 0 }
+        if (requestedUserId != null) {
+            LoyaltyService.awardPointsForBooking(
+                userId = requestedUserId,
+                bookingId = bookingId,
+                totalPrice = request.totalPrice,
+                travelClass = request.travelClass,
+            )
+        }
+
         hydrateBookingById(bookingId) ?: throw IllegalStateException("Booking was created but could not be loaded")
     }
 
