@@ -5,6 +5,7 @@ import { createBooking, login, register } from "../services/api";
 
 
 const MAX_PASSENGERS = 7;
+const SAVED_CARD_STORAGE_KEY = "leedsair_saved_card";
 
 const FLOW_STEPS = ["Flight summary", "Passenger details", "Seats", "Extras", "Review & Pay"];
 
@@ -12,6 +13,45 @@ function estimateLoyaltyPoints(total, travelClass, includeFirstBookingBonus) {
   const multiplier = travelClass === "business" ? 2 : 1;
   const basePoints = Math.max(0, Math.floor(total)) * multiplier;
   return basePoints + (includeFirstBookingBonus ? 500 : 0);
+}
+
+function getSavedCard() {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const raw = window.localStorage.getItem(SAVED_CARD_STORAGE_KEY);
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw);
+    if (!parsed?.last4 || !parsed?.maskedNumber || !parsed?.cardholderName || !parsed?.expiryDisplay) {
+      return null;
+    }
+
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function saveCardSummary(cardNumber, cardholderName, expiryMonth, expiryYear) {
+  if (typeof window === "undefined") return;
+
+  const digits = cardNumber.replace(/\D/g, "");
+  const last4 = digits.slice(-4);
+  const normalizedMonth = String(expiryMonth).padStart(2, "0");
+  const shortYear = String(expiryYear).slice(-2);
+
+  window.localStorage.setItem(SAVED_CARD_STORAGE_KEY, JSON.stringify({
+    last4,
+    maskedNumber: `**** **** **** ${last4}`,
+    cardholderName: cardholderName.trim(),
+    expiryDisplay: `${normalizedMonth}/${shortYear}`,
+  }));
+}
+
+function clearSavedCard() {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(SAVED_CARD_STORAGE_KEY);
 }
 
 function FlowStepper({ step }) {
@@ -261,6 +301,9 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
   const [cardExp,    setCardExp]    = useState("");
   const [cardCvv,    setCardCvv]    = useState("");
   const [cardName,   setCardName]   = useState("");
+  const [savedCard,  setSavedCard]  = useState(() => getSavedCard());
+  const [useSavedCard, setUseSavedCard] = useState(() => Boolean(getSavedCard()));
+  const [rememberCard, setRememberCard] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitErr,  setSubmitErr]  = useState(null);
 
@@ -296,13 +339,16 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
   async function handlePay() {
     setSubmitting(true); setSubmitErr(null);
     try {
-      const expiryParts = cardExp.split("/").map(part => part.trim());
+      const activeCardNumber = useSavedCard && savedCard ? savedCard.maskedNumber : cardNum;
+      const activeCardName = useSavedCard && savedCard ? savedCard.cardholderName : cardName;
+      const activeCardExpiry = useSavedCard && savedCard ? savedCard.expiryDisplay : cardExp;
+      const expiryParts = activeCardExpiry.split("/").map(part => part.trim());
       const expiryMonth = Number(expiryParts[0]);
       const expiryYear = expiryParts[1]
         ? Number(expiryParts[1].length === 2 ? `20${expiryParts[1]}` : expiryParts[1])
         : NaN;
 
-      if (!cardNum.trim() || !cardName.trim() || !cardCvv.trim() || !Number.isFinite(expiryMonth) || !Number.isFinite(expiryYear)) {
+      if (!activeCardNumber.trim() || !activeCardName.trim() || !cardCvv.trim() || !Number.isFinite(expiryMonth) || !Number.isFinite(expiryYear)) {
         setSubmitErr("Please enter valid payment details before confirming your booking.");
         setSubmitting(false);
         return;
@@ -310,19 +356,27 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
 
       const booking = await createBooking({
         userId: user?.id ?? null,
-        flightId: flight.id, travelClass: flight.travelClass,
+        flightId: String(flight.id), travelClass: flight.travelClass,
         seats, extras, totalPrice: total, passengers,
         // legacy single-passenger field for server compat
         passenger: passengers[0],
         payment: {
-          cardholderName: cardName,
-          cardNumber: cardNum,
+          cardholderName: activeCardName,
+          cardNumber: activeCardNumber,
           expiryMonth,
           expiryYear,
           cvv: cardCvv,
           billingPostalCode: "",
         },
       });
+
+      if (!useSavedCard && rememberCard) {
+        saveCardSummary(activeCardNumber, activeCardName, expiryMonth, expiryYear);
+        const latestSavedCard = getSavedCard();
+        setSavedCard(latestSavedCard);
+        setUseSavedCard(Boolean(latestSavedCard));
+      }
+
       onComplete(booking);
     } catch (err) { setSubmitErr(err.message); }
     finally { setSubmitting(false); }
@@ -489,7 +543,7 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
     );
   }
 
-  
+  if (step === 2) {
     const currentSeat = seats[seatPaxIdx] ?? null;
     const chosenByOthers = seats.filter((s, i) => s && i !== seatPaxIdx);
     const pax = passengers[seatPaxIdx];
@@ -657,14 +711,52 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
           {/* Payment */}
           <div className="payment-section">
             <h3>Payment Details</h3>
+            {savedCard && (
+              <div className="saved-card-panel">
+                <div>
+                  <strong>Saved card</strong>
+                  <div className="saved-card-meta">{savedCard.maskedNumber} · {savedCard.expiryDisplay} · {savedCard.cardholderName}</div>
+                </div>
+                <div className="saved-card-actions">
+                  <button
+                    type="button"
+                    className="saved-card-btn"
+                    onClick={() => setUseSavedCard((prev) => !prev)}
+                  >
+                    {useSavedCard ? "Use a different card" : "Use saved card"}
+                  </button>
+                  <button
+                    type="button"
+                    className="saved-card-btn saved-card-btn--danger"
+                    onClick={() => {
+                      clearSavedCard();
+                      setSavedCard(null);
+                      setUseSavedCard(false);
+                    }}
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+            )}
             <div className="form-row">
               <div className="form-group" style={{flex:2}}>
                 <label>Card number</label>
-                <input value={cardNum} onChange={e=>setCardNum(e.target.value)} placeholder="1234 5678 9012 3456" />
+                <input
+                  value={useSavedCard && savedCard ? savedCard.maskedNumber : cardNum}
+                  onChange={e=>setCardNum(e.target.value)}
+                  placeholder="1234 5678 9012 3456"
+                  readOnly={useSavedCard && Boolean(savedCard)}
+                />
               </div>
               <div className="form-group">
                 <label>Expiry</label>
-                <input value={cardExp} onChange={e=>setCardExp(e.target.value)} placeholder="MM / YY" />
+                <input
+                  value={useSavedCard && savedCard ? savedCard.expiryDisplay : cardExp}
+                  onChange={e=>setCardExp(e.target.value)}
+                  placeholder="MM / YY"
+                  readOnly={useSavedCard && Boolean(savedCard)}
+                />
               </div>
               <div className="form-group">
                 <label>CVV</label>
@@ -673,10 +765,22 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
             </div>
             <div className="form-group">
               <label>Name on card</label>
-              <input value={cardName} onChange={e=>setCardName(e.target.value)} placeholder="As it appears on your card" />
+              <input
+                value={useSavedCard && savedCard ? savedCard.cardholderName : cardName}
+                onChange={e=>setCardName(e.target.value)}
+                placeholder="As it appears on your card"
+                readOnly={useSavedCard && Boolean(savedCard)}
+              />
             </div>
             <div className="payment-secure-note">🔒 Secured with 3D Secure &amp; PCI-DSS encryption</div>
           </div>
+
+          {!useSavedCard && (
+            <label className="remember-card-label">
+              <input type="checkbox" checked={rememberCard} onChange={e=>setRememberCard(e.target.checked)} />
+              <span>Remember this card on this device with the number partially hidden</span>
+            </label>
+          )}
 
           <label className="tcs-label">
             <input type="checkbox" checked={agreed} onChange={e=>setAgreed(e.target.checked)} />
