@@ -84,7 +84,7 @@ object AuthService {
         LoyaltyAccountsTable.insert { row ->
             row[LoyaltyAccountsTable.userId] = userId
             row[pointsBalance] = 0
-            row[tier] = "silver"
+            row[tier] = "bronze"
         }
 
         val userRow = UsersTable.selectAll().first { it[UsersTable.id] == userId }

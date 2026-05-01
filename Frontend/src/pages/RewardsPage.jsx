@@ -1,15 +1,14 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { getLoyalty, redeemPoints } from "../services/api";
 import { LoadingSpinner, ErrorMessage } from "../components/StatusMessages";
 import { useAuth } from "../context/AuthContext";
 
-const REWARDS = [
-  { id: "voucher_10", label: "Â£10 Discount Voucher", points: 500, icon: "ðŸ·ï¸" },
-  { id: "voucher_25", label: "Â£25 Discount Voucher", points: 1200, icon: "ðŸ·ï¸" },
-  { id: "luggage",    label: "Free Extra Luggage",   points: 800,  icon: "ðŸ§³" },
-  { id: "upgrade",    label: "Seat Upgrade",         points: 1500, icon: "ðŸ’º" },
-  { id: "lounge",     label: "Airport Lounge Pass",  points: 2000, icon: "ðŸ›‹ï¸" },
-];
+const BENEFIT_ICONS = {
+  voucher: "Ticket",
+  baggage: "Bag",
+  upgrade: "Upgrade",
+  lounge: "Lounge",
+};
 
 export function RewardsPage({ onNavigate }) {
   const { user, authLoading } = useAuth();
@@ -33,27 +32,36 @@ export function RewardsPage({ onNavigate }) {
     }
 
     let cancelled = false;
-    async function fetch() {
+    async function fetchLoyalty() {
       try {
         const data = await getLoyalty();
-        if (!cancelled) setLoyalty(data);
+        if (!cancelled) {
+          setLoyalty(data);
+          setError(null);
+        }
       } catch (err) {
         if (!cancelled) setError(err.message);
       } finally {
         if (!cancelled) setLoading(false);
       }
     }
-    fetch();
-    return () => { cancelled = true; };
+
+    fetchLoyalty();
+    return () => {
+      cancelled = true;
+    };
   }, [authLoading, user]);
 
   async function handleRedeem(reward) {
     setRedeeming(reward.id);
     setRedeemSuccess(null);
+    setError(null);
+
     try {
-      await redeemPoints({ rewardId: reward.id, pointsCost: reward.points });
-      setLoyalty((prev) => ({ ...prev, points: prev.points - reward.points }));
-      setRedeemSuccess(`${reward.label} redeemed! Check your email.`);
+      const response = await redeemPoints({ rewardId: reward.id, pointsCost: reward.pointsCost });
+      setRedeemSuccess(`${response.rewardName} redeemed. Code: ${response.benefit.redemptionCode}`);
+      const refreshed = await getLoyalty();
+      setLoyalty(refreshed);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -62,22 +70,24 @@ export function RewardsPage({ onNavigate }) {
   }
 
   const points = loyalty?.points ?? user?.loyaltyPoints ?? 0;
-  const tier = points >= 5000 ? "Gold" : points >= 2000 ? "Silver" : "Bronze";
-  const tierColor = { Gold: "#f0a500", Silver: "#94a3b8", Bronze: "#b87333" }[tier];
+  const tier = loyalty?.tier ?? (points >= 5000 ? "Gold" : points >= 2000 ? "Silver" : "Bronze");
+  const tierColor = { Gold: "#f0a500", Silver: "#94a3b8", Bronze: "#b87333" }[tier] || "#b87333";
+  const rewards = loyalty?.rewards ?? [];
+  const benefits = loyalty?.benefits ?? [];
 
   return (
     <div className="page rewards-page">
       <div className="page-header">
         <h1>Loyalty & Rewards</h1>
-        <p>Earn points every time you fly and redeem for great rewards.</p>
+        <p>Track your points, unlock tier perks, and redeem benefits for future trips.</p>
       </div>
 
       <div className="rewards-body">
         {authLoading && <LoadingSpinner message="Restoring your rewards..." />}
         {!authLoading && !user && !loading && (
           <div className="empty-state">
-            <span className="empty-icon">â­</span>
-            <p>Sign in to view your points balance and redeem rewards.</p>
+            <span className="empty-icon">*</span>
+            <p>Sign in to view your points balance, available rewards, and redeemed benefits.</p>
             <button className="search-btn" onClick={() => onNavigate("login")}>Sign In</button>
           </div>
         )}
@@ -88,83 +98,112 @@ export function RewardsPage({ onNavigate }) {
           <>
             <div className="points-card">
               <div className="points-tier" style={{ color: tierColor }}>
-                â˜… {tier} Member
+                {tier} Member
               </div>
               <div className="points-value">{points.toLocaleString()}</div>
               <div className="points-label">Available Points</div>
-              {loyalty?.lifetimePoints && (
-                <div className="points-lifetime">
-                  {loyalty.lifetimePoints.toLocaleString()} lifetime points earned
-                </div>
-              )}
+              <div className="points-lifetime">
+                {(loyalty?.lifetimePoints ?? 0).toLocaleString()} lifetime points earned
+              </div>
               <div className="tier-progress">
                 <div className="tier-track">
                   <div
                     className="tier-fill"
                     style={{
-                      width: `${Math.min(100, (points / 5000) * 100)}%`,
+                      width: `${Math.min(100, ((loyalty?.lifetimePoints ?? 0) / 5000) * 100)}%`,
                       background: tierColor,
                     }}
                   />
                 </div>
                 <span className="tier-next">
-                  {tier !== "Gold" && `${(tier === "Bronze" ? 2000 : 5000) - points} pts to ${tier === "Bronze" ? "Silver" : "Gold"}`}
-                  {tier === "Gold" && "Maximum tier reached!"}
+                  {loyalty?.nextTier
+                    ? `${loyalty.pointsToNextTier} pts to ${loyalty.nextTier}`
+                    : "Maximum tier reached!"}
                 </span>
               </div>
             </div>
 
             {redeemSuccess && (
               <div className="confirmation-banner" style={{ marginBottom: "1.5rem" }}>
-                <span className="confirm-icon">âœ“</span>
+                <span className="confirm-icon">OK</span>
                 <p>{redeemSuccess}</p>
-                <button className="dismiss-btn" onClick={() => setRedeemSuccess(null)}>Ã—</button>
+                <button className="dismiss-btn" onClick={() => setRedeemSuccess(null)}>x</button>
               </div>
             )}
 
             <h2 className="rewards-section-title">Redeem Points</h2>
             <div className="rewards-grid">
-              {REWARDS.map((reward) => {
-                const canAfford = points >= reward.points;
+              {rewards.map((reward) => {
+                const canRedeem = reward.active && reward.affordable && reward.unlocked;
+                const buttonLabel = !reward.unlocked
+                  ? `${reward.tierRequired} tier required`
+                  : !reward.affordable
+                    ? "Not enough points"
+                    : redeeming === reward.id
+                      ? "Redeeming..."
+                      : "Redeem";
+
                 return (
-                  <div key={reward.id} className={`reward-card ${!canAfford ? "reward-card--locked" : ""}`}>
-                    <span className="reward-icon">{reward.icon}</span>
-                    <h3 className="reward-name">{reward.label}</h3>
-                    <div className="reward-points">{reward.points.toLocaleString()} pts</div>
+                  <div key={reward.id} className={`reward-card ${!canRedeem ? "reward-card--locked" : ""}`}>
+                    <span className="reward-icon">{BENEFIT_ICONS[reward.benefitType] || "Reward"}</span>
+                    <h3 className="reward-name">{reward.name}</h3>
+                    <div className="reward-points">{reward.pointsCost.toLocaleString()} pts</div>
+                    <p>{reward.description}</p>
                     <button
                       className="redeem-btn"
-                      disabled={!canAfford || redeeming === reward.id}
+                      disabled={!canRedeem || redeeming === reward.id}
                       onClick={() => handleRedeem(reward)}
                     >
-                      {redeeming === reward.id ? "Redeeming..." : canAfford ? "Redeem" : "Not enough points"}
+                      {buttonLabel}
                     </button>
                   </div>
                 );
               })}
             </div>
 
+            <div className="rewards-info" style={{ marginTop: "1.5rem" }}>
+              <h2>Your Redeemed Benefits</h2>
+              {benefits.length === 0 ? (
+                <p>No benefits redeemed yet. Once you redeem a reward, your code and usage details will appear here.</p>
+              ) : (
+                <div className="earning-rules">
+                  {benefits.map((benefit) => (
+                    <div key={benefit.id} className="earning-rule">
+                      <span>{BENEFIT_ICONS[benefit.benefitType] || "Benefit"}</span>
+                      <div>
+                        <strong>{benefit.rewardName}</strong>
+                        <p>{benefit.message}</p>
+                        <p>Code: {benefit.redemptionCode}</p>
+                        <p>Status: {benefit.status}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <div className="rewards-info">
               <h2>How to earn points</h2>
               <div className="earning-rules">
                 <div className="earning-rule">
-                  <span>âœˆ</span>
+                  <span>1x</span>
                   <div>
                     <strong>Economy flights</strong>
-                    <p>Earn 1 point per Â£1 spent</p>
+                    <p>Earn 1 point per GBP1 spent.</p>
                   </div>
                 </div>
                 <div className="earning-rule">
-                  <span>ðŸ’º</span>
+                  <span>2x</span>
                   <div>
                     <strong>Business class</strong>
-                    <p>Earn 2 points per Â£1 spent (double bonus)</p>
+                    <p>Earn 2 points per GBP1 spent.</p>
                   </div>
                 </div>
                 <div className="earning-rule">
-                  <span>ðŸŽ</span>
+                  <span>+500</span>
                   <div>
                     <strong>First booking bonus</strong>
-                    <p>500 bonus points on your first flight</p>
+                    <p>Your first completed member booking adds a 500 point welcome bonus.</p>
                   </div>
                 </div>
               </div>

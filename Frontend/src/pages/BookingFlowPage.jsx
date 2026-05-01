@@ -2,16 +2,17 @@ import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { createBooking, login, register } from "../services/api";
 
-// ─────────────────────────────────────────────────────────
-// ARCHITECTURE: All step content is direct JSX (no inner
-// function components) to prevent React remounting inputs.
-// Multi-passenger: passengers[] array, seats[] array,
-// currentPaxIdx tracks which passenger is active.
-// ─────────────────────────────────────────────────────────
+
 
 const MAX_PASSENGERS = 7;
 
 const FLOW_STEPS = ["Flight summary", "Passenger details", "Seats", "Extras", "Review & Pay"];
+
+function estimateLoyaltyPoints(total, travelClass, includeFirstBookingBonus) {
+  const multiplier = travelClass === "business" ? 2 : 1;
+  const basePoints = Math.max(0, Math.floor(total)) * multiplier;
+  return basePoints + (includeFirstBookingBonus ? 500 : 0);
+}
 
 function FlowStepper({ step }) {
   return (
@@ -27,7 +28,6 @@ function FlowStepper({ step }) {
   );
 }
 
-// ── Seat pricing ──────────────────────────────────────────
 function getSeatPrice(row, col, isBiz) {
   if (isBiz) {
     if (row === 1) return col === "A" || col === "F" ? 55 : 45;
@@ -49,7 +49,6 @@ const ROWS_BIZ = [1, 2, 3];
 const ROWS_ECO = Array.from({ length: 27 }, (_, i) => i + 4);
 const COLS     = ["A", "B", "C", "", "D", "E", "F"];
 
-// SeatMap — module-level, stable, receives already-chosen seats to grey them
 function SeatMap({ selected, onSelect, travelClass, chosenByOthers = [] }) {
   const isBizBooking = travelClass === "business";
   const takenOrChosen = new Set([...BASE_TAKEN, ...chosenByOthers]);
@@ -133,7 +132,6 @@ const EXTRAS_LIST = [
   { id: "insurance", label: "Travel insurance",     price: 18, icon: "🛡"  },
 ];
 
-// AuthPanel — module-level so inputs never lose focus
 function AuthPanel({ onAuthComplete }) {
   const { loginUser } = useAuth();
   const [mode,      setMode]      = useState("login");
@@ -199,7 +197,6 @@ function AuthPanel({ onAuthComplete }) {
   );
 }
 
-// ── Helper: build initial passengers array ────────────────
 function buildPassengers(flight, user) {
   const adults   = Math.max(1, Number(flight?.searchParams?.adults)   || 1);
   const children =              Number(flight?.searchParams?.children) || 0;
@@ -227,7 +224,6 @@ function paxLabel(pax, idx) {
   return name ? `${typeLabel} ${idx+1}: ${name}` : `${typeLabel} ${idx+1}`;
 }
 
-// ── Main BookingFlowPage ──────────────────────────────────
 export function BookingFlowPage({ flight, onNavigate, onComplete }) {
   const { user } = useAuth();
   const [step, setStep] = useState(0);
@@ -247,7 +243,6 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
     );
   }
 
-  // ── Multi-passenger state ─────────────────────────────
   const [passengers, setPassengers] = useState(() => buildPassengers(flight, user));
   const [paxIdx,     setPaxIdx]     = useState(0); // which passenger we're editing
   const [seats,      setSeats]      = useState([]); // seats[i] = seatId or null
@@ -255,12 +250,10 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
 
   const paxCount = passengers.length;
 
-  // Update a single field on a specific passenger
   function setPaxField(idx, field, value) {
     setPassengers(prev => prev.map((p, i) => i === idx ? { ...p, [field]: value } : p));
   }
 
-  // ── Other booking state ───────────────────────────────
   const [extras,     setExtras]     = useState([]);
   const [agreed,     setAgreed]     = useState(false);
   const [authDone,   setAuthDone]   = useState(!!user);
@@ -316,6 +309,7 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
       }
 
       const booking = await createBooking({
+        userId: user?.id ?? null,
         flightId: flight.id, travelClass: flight.travelClass,
         seats, extras, totalPrice: total, passengers,
         // legacy single-passenger field for server compat
@@ -334,14 +328,12 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
     finally { setSubmitting(false); }
   }
 
-  // Validation: all passengers must have first name, last name, passport
-  // Email only required for first (lead) passenger
+
   function paxValid(p, i) {
     return p.firstName && p.lastName && p.passportNumber && (i > 0 || p.email);
   }
   const allPaxValid = passengers.every((p, i) => paxValid(p, i));
 
-  // ── STEP 0 — Flight Summary ───────────────────────────
   if (step === 0) return (
     <div className="booking-flow-page">
       <div className="booking-flow-stepper-bar"><FlowStepper step={0} /></div>
@@ -411,8 +403,7 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
     </div>
   );
 
-  // ── STEP 1 — Passenger Details ────────────────────────
-  // One tab per passenger. Inputs are direct JSX with stable setState.
+  
   if (step === 1) {
     const p   = passengers[paxIdx];
     const isFirst = paxIdx === 0;
@@ -498,9 +489,7 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
     );
   }
 
-  // ── STEP 2 — Seat Selection ───────────────────────────
-  // One seat map per passenger. User picks seat then clicks "Next passenger".
-  if (step === 2) {
+  
     const currentSeat = seats[seatPaxIdx] ?? null;
     const chosenByOthers = seats.filter((s, i) => s && i !== seatPaxIdx);
     const pax = passengers[seatPaxIdx];
@@ -567,7 +556,6 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
     );
   }
 
-  // ── STEP 3 — Extras ───────────────────────────────────
   if (step === 3) return (
     <div className="booking-flow-page">
       <div className="booking-flow-stepper-bar"><FlowStepper step={3} /></div>
@@ -598,7 +586,6 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
     </div>
   );
 
-  // ── STEP 4 — Review & Pay ─────────────────────────────
   return (
     <div className="booking-flow-page">
       <div className="booking-flow-stepper-bar"><FlowStepper step={4} /></div>
@@ -613,7 +600,7 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
         )}
         {authDone && user && (
           <div className="auth-success-banner">
-            🎉 Logged in as <strong>{user.firstName} {user.lastName}</strong> — booking saved &amp; you'll earn <strong>{Math.round(total)} loyalty points</strong>!
+            🎉 Logged in as <strong>{user.firstName} {user.lastName}</strong> — booking saved &amp; you'll earn <strong>{estimateLoyaltyPoints(total, flight.travelClass, (user.loyaltyPoints ?? 0) === 0)} loyalty points</strong>!
           </div>
         )}
 
