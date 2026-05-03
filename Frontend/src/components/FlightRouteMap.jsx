@@ -45,22 +45,39 @@ function getMarkerIcon(role) {
   return layoverIcon;
 }
 
-function FitRouteBounds({ positions }) {
+function getViewMode(positions) {
+  if (!positions.length) return "regional";
+
+  const latitudes = positions.map(([latitude]) => latitude);
+  const longitudes = positions.map(([, longitude]) => longitude);
+  const latSpan = Math.max(...latitudes) - Math.min(...latitudes);
+  const lonSpan = Math.max(...longitudes) - Math.min(...longitudes);
+
+  return latSpan > 42 || lonSpan > 85 ? "world" : "regional";
+}
+
+function FitRouteBounds({ positions, viewMode }) {
   const map = useMap();
 
   useEffect(() => {
     if (!positions.length) return;
 
     if (positions.length === 1) {
-      map.setView(positions[0], 5, { animate: false });
+      map.setView(positions[0], 4, { animate: false });
+      return;
+    }
+
+    if (viewMode === "world") {
+      map.setView([22, 8], 2, { animate: false });
       return;
     }
 
     map.fitBounds(positions, {
-      padding: [32, 32],
+      padding: [96, 72],
+      maxZoom: 3,
       animate: false,
     });
-  }, [map, positions]);
+  }, [map, positions, viewMode]);
 
   return null;
 }
@@ -103,12 +120,14 @@ export function FlightRouteMap({
 
     const stops = buildRouteStops(legs, airportLookup);
     const segments = buildLegPolylines(legs, airportLookup);
-    const bounds = stops.map((stop) => [stop.latitude, stop.longitude]);
+    const bounds = segments.flatMap((segment) => segment.positions);
+    const viewMode = getViewMode(bounds);
 
     return {
       stops,
       segments,
       bounds,
+      viewMode,
       missingCodes: [],
     };
   }, [airportLookup, legs]);
@@ -150,15 +169,21 @@ export function FlightRouteMap({
           className="flight-route-map-leaflet"
           center={[51.505, -0.09]}
           zoom={4}
+          zoomControl={false}
           scrollWheelZoom={false}
+          doubleClickZoom={false}
+          touchZoom={false}
+          boxZoom={false}
+          keyboard={false}
+          dragging={false}
           attributionControl={false}
         >
           <TileLayer
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+            url="https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png"
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; CARTO'
           />
 
-          <FitRouteBounds positions={routeData.bounds} />
+          <FitRouteBounds positions={routeData.bounds} viewMode={routeData.viewMode} />
 
           {routeData.stops.map((stop) => (
             <Marker
