@@ -4,6 +4,32 @@ export function buildApiUrl(path) {
   return `${BASE_URL}${path}`;
 }
 
+function normalizeErrorMessage(message, path) {
+  if (!message) return "Something went wrong. Please try again.";
+  if (message.includes("Failed to fetch")) {
+    return "We couldn't reach the server. Check that the backend is running and try again.";
+  }
+  if (path.startsWith("/bookings/lookup") && message === "Booking not found") {
+    return "We couldn't find a booking that matches that reference and last name.";
+  }
+  if (path.startsWith("/bookings/lookup") && message === "Missing ref or lastName") {
+    return "Enter both your booking reference and last name to continue.";
+  }
+  if (message === "Booking not found") {
+    return "This booking could not be found anymore. Refresh and try again.";
+  }
+  if (message === "Cancelled bookings cannot be modified") {
+    return "This booking has already been cancelled, so changes are no longer available.";
+  }
+  if (message === "Cancelled bookings cannot be checked in") {
+    return "Cancelled bookings cannot be checked in.";
+  }
+  if (message === "Checked-in bookings cannot be cancelled") {
+    return "This booking has already been checked in and can no longer be cancelled online.";
+  }
+  return message;
+}
+
 // ── Helpers ──────────────────────────────────────────────
 async function request(path, options = {}, authTokenKey = "token") {
   const token = authTokenKey ? localStorage.getItem(authTokenKey) : null;
@@ -17,7 +43,7 @@ async function request(path, options = {}, authTokenKey = "token") {
       const err = await res.json();
       message = err.message || err.error || message;
     } catch {}
-    throw new Error(message);
+    throw new Error(normalizeErrorMessage(message, path));
   }
   // 204 No Content
   if (res.status === 204) return null;
@@ -108,4 +134,11 @@ export async function adminGetReports() {
 
 export async function adminGetMetrics() {
   return adminRequest("/admin/metrics");
+}
+
+export async function adminResolveModificationRequest(requestId, data) {
+  return adminRequest(`/admin/modification-requests/${requestId}/decision`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
 }

@@ -1,53 +1,51 @@
 import { useState, useEffect, useMemo } from "react";
-import { adminGetBookings, adminGetMetrics, adminGetReports } from "../services/api";
+import {
+  adminGetBookings,
+  adminGetMetrics,
+  adminGetReports,
+  adminResolveModificationRequest,
+} from "../services/api";
 import { LoadingSpinner, ErrorMessage } from "../components/StatusMessages";
-
-// ── PRD §5 Admin Portal ───────────────────────────────────
-// Tabs: Bookings | Reports | Modifications
-// Bookings: filter by flight, date, route, status + search
-// Reports: bookings/flight, popular routes, revenue/route,
-//          peak booking times, cancellation rate
-// Export: real CSV download (not just alert)
 
 const STATUS_FILTERS = ["All", "Confirmed", "Cancelled", "Pending", "CheckedIn"];
 
-// ── CSV export helper ─────────────────────────────────────
 function exportCSV(rows, filename) {
   if (!rows.length) return;
   const headers = ["Reference", "Passenger", "Route", "Date", "Class", "Status", "Cancellation Reason", "Price"];
   const lines = [
     headers.join(","),
-    ...rows.map(b => [
-      b.bookingReference || b.id,
-      `"${(b.passenger?.firstName || "")} ${(b.passenger?.lastName || "")}"`,
-      `"${b.flight?.from || b.from || ""} → ${b.flight?.to || b.to || ""}"`,
-      b.flight?.departureDate || b.departureDate || "",
-      b.travelClass || "Economy",
-      b.status || "Confirmed",
-      `"${b.cancellationReason || ""}"`,
-      b.totalPrice || "",
-    ].join(","))
+    ...rows.map((booking) => [
+      booking.bookingReference || booking.id,
+      `"${(booking.passenger?.firstName || "")} ${(booking.passenger?.lastName || "")}"`,
+      `"${booking.flight?.from || booking.from || ""} -> ${booking.flight?.to || booking.to || ""}"`,
+      booking.flight?.departureDate || booking.departureDate || "",
+      booking.travelClass || "Economy",
+      booking.status || "Confirmed",
+      `"${booking.cancellationReason || ""}"`,
+      booking.totalPrice || "",
+    ].join(",")),
   ];
+
   const blob = new Blob([lines.join("\n")], { type: "text/csv" });
-  const url  = URL.createObjectURL(blob);
-  const a    = Object.assign(document.createElement("a"), { href: url, download: filename });
-  a.click();
+  const url = URL.createObjectURL(blob);
+  const link = Object.assign(document.createElement("a"), { href: url, download: filename });
+  link.click();
   URL.revokeObjectURL(url);
 }
 
-// ── Simple bar chart ──────────────────────────────────────
 function BarChart({ data, labelKey, valueKey, prefix = "", color = "var(--sky)" }) {
   if (!data?.length) return <p className="muted-text">No data available.</p>;
-  const max = Math.max(...data.map(d => d[valueKey] || 0));
+  const max = Math.max(...data.map((row) => row[valueKey] || 0));
+
   return (
     <div className="bar-chart">
-      {data.map((row, i) => (
-        <div key={i} className="bar-row">
+      {data.map((row, index) => (
+        <div key={`${row[labelKey]}-${index}`} className="bar-row">
           <span className="bar-label">{row[labelKey]}</span>
           <div className="bar-track">
             <div
               className="bar-fill"
-              style={{ width: `${max ? (row[valueKey] / max) * 100 : 0}%`, background: color }}
+              style={{ width: `${max ? ((row[valueKey] || 0) / max) * 100 : 0}%`, background: color }}
             />
           </div>
           <span className="bar-value">{prefix}{(row[valueKey] ?? 0).toLocaleString()}</span>
@@ -57,7 +55,6 @@ function BarChart({ data, labelKey, valueKey, prefix = "", color = "var(--sky)" 
   );
 }
 
-// ── Metric card ───────────────────────────────────────────
 function MetricCard({ value, label, icon, highlight }) {
   return (
     <div className={`metric-card ${highlight ? "metric-card--highlight" : ""}`}>
@@ -68,112 +65,154 @@ function MetricCard({ value, label, icon, highlight }) {
   );
 }
 
-// ── Main component ────────────────────────────────────────
+function formatRequestType(type) {
+  if (!type) return "General";
+  return type.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
 export function AdminDashboardPage({ onNavigate }) {
-  const [tab,      setTab]      = useState("bookings");
+  const [tab, setTab] = useState("bookings");
   const [bookings, setBookings] = useState([]);
-  const [metrics,  setMetrics]  = useState(null);
-  const [reports,  setReports]  = useState(null);
-  const [loading,  setLoading]  = useState(true);
-  const [error,    setError]    = useState(null);
+  const [metrics, setMetrics] = useState(null);
+  const [reports, setReports] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [decisionNotes, setDecisionNotes] = useState({});
+  const [decisionLoadingId, setDecisionLoadingId] = useState(null);
+  const [decisionMessage, setDecisionMessage] = useState(null);
 
-  // Booking filters — PRD: filter by flight, date, route, status
   const [statusFilter, setStatusFilter] = useState("All");
-  const [search,       setSearch]       = useState("");
-  const [dateFilter,   setDateFilter]   = useState("");
-  const [routeFilter,  setRouteFilter]  = useState("");
-
-  // Expanded row for booking detail
+  const [search, setSearch] = useState("");
+  const [dateFilter, setDateFilter] = useState("");
+  const [routeFilter, setRouteFilter] = useState("");
   const [expandedId, setExpandedId] = useState(null);
 
-  // ── Guard: redirect if no admin token ─────────────────
+  async function refreshDashboardData(includeReports = false) {
+    const [bookingsData, metricsData, reportsData] = await Promise.all([
+      adminGetBookings(),
+      adminGetMetrics(),
+      includeReports ? adminGetReports() : Promise.resolve(null),
+    ]);
+    setBookings(bookingsData);
+    setMetrics(metricsData);
+    if (includeReports && reportsData) {
+      setReports(reportsData);
+    }
+  }
+
   useEffect(() => {
     if (!localStorage.getItem("adminToken")) onNavigate("admin-login");
-  }, []);
+  }, [onNavigate]);
 
-  // ── Load bookings + metrics on mount ──────────────────
   useEffect(() => {
     let cancelled = false;
+
     async function load() {
-      setLoading(true); setError(null);
+      setLoading(true);
+      setError(null);
       try {
-        const [bData, mData] = await Promise.all([
+        const [bookingsData, metricsData] = await Promise.all([
           adminGetBookings(),
           adminGetMetrics(),
         ]);
-        if (!cancelled) { setBookings(bData); setMetrics(mData); }
+        if (!cancelled) {
+          setBookings(bookingsData);
+          setMetrics(metricsData);
+        }
       } catch (err) {
         if (!cancelled) setError(err.message);
       } finally {
         if (!cancelled) setLoading(false);
       }
     }
+
     load();
     return () => { cancelled = true; };
   }, []);
 
-  // ── Load reports lazily when Reports tab opened ───────
   useEffect(() => {
     if (tab !== "reports" || reports) return;
     let cancelled = false;
+
     adminGetReports()
-      .then(data => { if (!cancelled) setReports(data); })
-      .catch(err => { if (!cancelled) setError(err.message); });
+      .then((data) => {
+        if (!cancelled) setReports(data);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err.message);
+      });
+
     return () => { cancelled = true; };
-  }, [tab]);
+  }, [tab, reports]);
 
   function handleLogout() {
     localStorage.removeItem("adminToken");
     onNavigate("home");
   }
 
-  // ── Filtered bookings (memo so it doesn't recalc on every render) ─
-  const filtered = useMemo(() => bookings.filter(b => {
-    if (statusFilter !== "All" && b.status !== statusFilter) return false;
-    if (dateFilter && (b.flight?.departureDate || b.departureDate || "") !== dateFilter) return false;
+  async function handleDecision(requestId, decision) {
+    setDecisionLoadingId(requestId);
+    setDecisionMessage(null);
+    setError(null);
+    try {
+      await adminResolveModificationRequest(requestId, {
+        decision,
+        note: decisionNotes[requestId] || "",
+      });
+      await refreshDashboardData(Boolean(reports));
+      setDecisionNotes((current) => ({ ...current, [requestId]: "" }));
+      setDecisionMessage(`Request ${decision} successfully.`);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setDecisionLoadingId(null);
+    }
+  }
+
+  const filtered = useMemo(() => bookings.filter((booking) => {
+    if (statusFilter !== "All" && booking.status !== statusFilter) return false;
+    if (dateFilter && (booking.flight?.departureDate || booking.departureDate || "") !== dateFilter) return false;
     if (routeFilter) {
-      const route = `${b.flight?.from || b.from || ""} ${b.flight?.to || b.to || ""}`.toLowerCase();
+      const route = `${booking.flight?.from || booking.from || ""} ${booking.flight?.to || booking.to || ""}`.toLowerCase();
       if (!route.includes(routeFilter.toLowerCase())) return false;
     }
     if (search) {
-      const s = search.toLowerCase();
-      const ref  = (b.bookingReference || b.id || "").toLowerCase();
-      const name = `${b.passenger?.firstName || ""} ${b.passenger?.lastName || ""}`.toLowerCase();
-      const fn   = (b.flight?.flightNumber || "").toLowerCase();
-      if (!ref.includes(s) && !name.includes(s) && !fn.includes(s)) return false;
+      const term = search.toLowerCase();
+      const ref = String(booking.bookingReference || booking.id || "").toLowerCase();
+      const passenger = `${booking.passenger?.firstName || ""} ${booking.passenger?.lastName || ""}`.toLowerCase();
+      const flightNumber = String(booking.flight?.flightNumber || "").toLowerCase();
+      if (!ref.includes(term) && !passenger.includes(term) && !flightNumber.includes(term)) return false;
     }
     return true;
   }), [bookings, statusFilter, dateFilter, routeFilter, search]);
 
-  // ── Derived counts for modifications tab ──────────────
-  const modifications = useMemo(() =>
-    bookings.filter(b => b.modificationRequested || b.status === "Pending"),
-  [bookings]);
+  const modifications = useMemo(() => bookings.flatMap((booking) =>
+    (booking.requestHistory || [])
+      .filter((request) => request.status?.toLowerCase() === "pending")
+      .map((request) => ({ booking, request }))
+  ), [bookings]);
 
-  // ── Unique routes for route filter dropdown ───────────
   const uniqueRoutes = useMemo(() => {
-    const set = new Set();
-    bookings.forEach(b => {
-      const r = `${b.flight?.from || b.from || ""}-${b.flight?.to || b.to || ""}`;
-      if (r !== "-") set.add(r);
+    const routeSet = new Set();
+    bookings.forEach((booking) => {
+      const route = `${booking.flight?.from || booking.from || ""}-${booking.flight?.to || booking.to || ""}`;
+      if (route !== "-") routeSet.add(route);
     });
-    return ["", ...Array.from(set)];
+    return ["", ...Array.from(routeSet)];
   }, [bookings]);
 
   return (
     <div className="page admin-page">
-
-      {/* ── Top bar ─────────────────────────────────────── */}
       <div className="admin-topbar">
         <div className="admin-brand">
-          <span>🛡</span>
+          <span>Admin</span>
           <strong>LeedsAir Admin</strong>
         </div>
         <div className="admin-tabs">
           {[
-            ["bookings",      "📋 Bookings"],
-            ["reports",       "📊 Reports"],
-            ["modifications", "✏️ Modifications"],
+            ["bookings", "Bookings"],
+            ["reports", "Reports"],
+            ["modifications", "Modifications"],
           ].map(([key, label]) => (
             <button
               key={key}
@@ -192,149 +231,143 @@ export function AdminDashboardPage({ onNavigate }) {
 
       <div className="admin-body">
         {loading && <LoadingSpinner message="Loading admin data..." />}
-        {error   && <ErrorMessage message={error} />}
-
-        {/* ════════════════════════════════════════════════
-            TAB: BOOKINGS
-            PRD §5: View all bookings, filter by flight /
-            date / route / status, track availability,
-            cancellations, changes
-           ════════════════════════════════════════════════ */}
-        {!loading && !error && tab === "bookings" && (<>
-
-          {/* Metric strip */}
-          {metrics && (
-            <div className="admin-metrics">
-              <MetricCard icon="🎫" value={metrics.totalBookings ?? bookings.length}        label="Total Bookings" />
-              <MetricCard icon="❌" value={metrics.cancellations ?? "—"}                    label="Cancellations" />
-              <MetricCard icon="💷" value={`£${(metrics.totalRevenue ?? 0).toLocaleString()}`} label="Total Revenue" highlight />
-              <MetricCard icon="✈" value={metrics.popularRoute ?? "—"}                     label="Top Route" />
-              <MetricCard icon="👤" value={metrics.activeUsers ?? "—"}                      label="Active Users" />
-              <MetricCard icon="📉" value={`${metrics.cancellationRate ?? "—"}%`}           label="Cancellation Rate" />
-            </div>
-          )}
-
-          {/* Filters — PRD: filter by flight, date, route, status */}
-          <div className="admin-filters-bar">
-            <input
-              className="admin-search"
-              placeholder="Search reference, passenger, flight no..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-            />
-            <input
-              type="date"
-              className="admin-date-filter"
-              value={dateFilter}
-              onChange={e => setDateFilter(e.target.value)}
-              title="Filter by departure date"
-            />
-            <select
-              className="admin-route-filter"
-              value={routeFilter}
-              onChange={e => setRouteFilter(e.target.value)}
-            >
-              <option value="">All routes</option>
-              {uniqueRoutes.filter(Boolean).map(r => (
-                <option key={r} value={r.replace("-", " ")}>{r}</option>
-              ))}
-            </select>
-            <div className="status-filter-group">
-              {STATUS_FILTERS.map(s => (
-                <button
-                  key={s}
-                  className={`filter-chip ${statusFilter === s ? "active" : ""}`}
-                  onClick={() => setStatusFilter(s)}
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
-            <button
-              className="admin-clear-btn"
-              onClick={() => { setSearch(""); setDateFilter(""); setRouteFilter(""); setStatusFilter("All"); }}
-            >
-              Clear filters
-            </button>
+        {error && <ErrorMessage message={error} />}
+        {decisionMessage && (
+          <div className="confirmation-banner admin-confirmation-banner">
+            <p>{decisionMessage}</p>
           </div>
+        )}
 
-          {/* Results count + export */}
-          <div className="admin-results-bar">
-            <span className="admin-results-count">
-              Showing <strong>{filtered.length}</strong> of <strong>{bookings.length}</strong> bookings
-            </span>
-            <button
-              className="export-btn"
-              onClick={() => exportCSV(filtered, "leedsair-bookings.csv")}
-            >
-              ⬇ Export CSV
-            </button>
-          </div>
-
-          {/* Bookings table */}
-          <div className="admin-table-wrapper">
-            <div className="admin-table-header">
-              <span>Reference</span>
-              <span>Passenger</span>
-              <span>Route</span>
-              <span>Date</span>
-              <span>Class</span>
-              <span>Price</span>
-              <span>Status</span>
-            </div>
-
-            {filtered.length === 0 && (
-              <div className="empty-state"><p>No bookings match your filters.</p></div>
+        {!loading && !error && tab === "bookings" && (
+          <>
+            {metrics && (
+              <div className="admin-metrics">
+                <MetricCard icon="Tickets" value={metrics.totalBookings ?? bookings.length} label="Total Bookings" />
+                <MetricCard icon="Cancel" value={metrics.cancellations ?? "-"} label="Cancellations" />
+                <MetricCard icon="Revenue" value={`£${(metrics.totalRevenue ?? 0).toLocaleString()}`} label="Total Revenue" highlight />
+                <MetricCard icon="Route" value={metrics.popularRoute ?? "-"} label="Top Route" />
+                <MetricCard icon="Users" value={metrics.activeUsers ?? "-"} label="Active Users" />
+                <MetricCard icon="Rate" value={`${metrics.cancellationRate ?? "-"}%`} label="Cancellation Rate" />
+              </div>
             )}
 
-            {filtered.map(b => (
-              <div key={b.id || b.bookingReference}>
-                <div
-                  className="admin-table-row admin-table-row--clickable"
-                  onClick={() => setExpandedId(expandedId === (b.id || b.bookingReference) ? null : (b.id || b.bookingReference))}
-                >
-                  <span className="ref-value">{b.bookingReference || b.id}</span>
-                  <span>{b.passenger?.firstName} {b.passenger?.lastName}</span>
-                  <span>{b.flight?.from || b.from} → {b.flight?.to || b.to}</span>
-                  <span>{b.flight?.departureDate || b.departureDate || "—"}</span>
-                  <span>{b.travelClass || "Economy"}</span>
-                  <span>£{b.totalPrice ?? "—"}</span>
-                  <span className={`status-badge status-${(b.status || "confirmed").toLowerCase()}`}>
-                    {b.status || "Confirmed"}
-                  </span>
-                </div>
-
-                {/* Expanded detail row */}
-                {expandedId === (b.id || b.bookingReference) && (
-                  <div className="admin-row-detail">
-                    <div className="admin-detail-grid">
-                      <div><span>Flight</span><strong>{b.flight?.flightNumber || "—"}</strong></div>
-                      <div><span>Departure</span><strong>{b.flight?.departureTime || "—"}</strong></div>
-                      <div><span>Arrival</span><strong>{b.flight?.arrivalTime || "—"}</strong></div>
-                      <div><span>Seat</span><strong>{b.seat || "Auto-assigned"}</strong></div>
-                      <div><span>Checked In</span><strong>{b.checkedIn ? "Yes ✓" : "No"}</strong></div>
-                      <div><span>Email</span><strong>{b.passenger?.email || "—"}</strong></div>
-                      <div><span>Passport</span><strong>{b.passenger?.passportNumber || "—"}</strong></div>
-                      <div><span>Booked</span><strong>{b.createdAt ? new Date(b.createdAt).toLocaleDateString("en-GB") : "—"}</strong></div>
-                    </div>
-                    {b.extras?.length > 0 && (
-                      <div className="admin-detail-extras">
-                        Extras: {b.extras.join(", ")}
-                      </div>
-                    )}
-                  </div>
-                )}
+            <div className="admin-filters-bar">
+              <input
+                className="admin-search"
+                placeholder="Search reference, passenger, flight no..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+              <input
+                type="date"
+                className="admin-date-filter"
+                value={dateFilter}
+                onChange={(e) => setDateFilter(e.target.value)}
+                title="Filter by departure date"
+              />
+              <select
+                className="admin-route-filter"
+                value={routeFilter}
+                onChange={(e) => setRouteFilter(e.target.value)}
+              >
+                <option value="">All routes</option>
+                {uniqueRoutes.filter(Boolean).map((route) => (
+                  <option key={route} value={route.replace("-", " ")}>{route}</option>
+                ))}
+              </select>
+              <div className="status-filter-group">
+                {STATUS_FILTERS.map((status) => (
+                  <button
+                    key={status}
+                    className={`filter-chip ${statusFilter === status ? "active" : ""}`}
+                    onClick={() => setStatusFilter(status)}
+                  >
+                    {status}
+                  </button>
+                ))}
               </div>
-            ))}
-          </div>
-        </>)}
+              <button
+                className="admin-clear-btn"
+                onClick={() => {
+                  setSearch("");
+                  setDateFilter("");
+                  setRouteFilter("");
+                  setStatusFilter("All");
+                }}
+              >
+                Clear filters
+              </button>
+            </div>
 
-        {/* ════════════════════════════════════════════════
-            TAB: REPORTS
-            PRD §5: Bookings per flight, popular routes,
-            revenue per route, peak booking times,
-            cancellation rate — plus CSV export
-           ════════════════════════════════════════════════ */}
+            <div className="admin-results-bar">
+              <span className="admin-results-count">
+                Showing <strong>{filtered.length}</strong> of <strong>{bookings.length}</strong> bookings
+              </span>
+              <button
+                className="export-btn"
+                onClick={() => exportCSV(filtered, "leedsair-bookings.csv")}
+              >
+                Export CSV
+              </button>
+            </div>
+
+            <div className="admin-table-wrapper">
+              <div className="admin-table-header">
+                <span>Reference</span>
+                <span>Passenger</span>
+                <span>Route</span>
+                <span>Date</span>
+                <span>Class</span>
+                <span>Price</span>
+                <span>Status</span>
+              </div>
+
+              {filtered.length === 0 && (
+                <div className="empty-state"><p>No bookings match your filters.</p></div>
+              )}
+
+              {filtered.map((booking) => (
+                <div key={booking.id || booking.bookingReference}>
+                  <div
+                    className="admin-table-row admin-table-row--clickable"
+                    onClick={() => setExpandedId(expandedId === (booking.id || booking.bookingReference) ? null : (booking.id || booking.bookingReference))}
+                  >
+                    <span className="ref-value">{booking.bookingReference || booking.id}</span>
+                    <span>{booking.passenger?.firstName} {booking.passenger?.lastName}</span>
+                    <span>{booking.flight?.from || booking.from} - {booking.flight?.to || booking.to}</span>
+                    <span>{booking.flight?.departureDate || booking.departureDate || "-"}</span>
+                    <span>{booking.travelClass || "Economy"}</span>
+                    <span>£{booking.totalPrice ?? "-"}</span>
+                    <span className={`status-badge status-${(booking.status || "confirmed").toLowerCase()}`}>
+                      {booking.status || "Confirmed"}
+                    </span>
+                  </div>
+
+                  {expandedId === (booking.id || booking.bookingReference) && (
+                    <div className="admin-row-detail">
+                      <div className="admin-detail-grid">
+                        <div><span>Flight</span><strong>{booking.flight?.flightNumber || "-"}</strong></div>
+                        <div><span>Departure</span><strong>{booking.flight?.departureTime || "-"}</strong></div>
+                        <div><span>Arrival</span><strong>{booking.flight?.arrivalTime || "-"}</strong></div>
+                        <div><span>Seat</span><strong>{booking.seat || "Auto-assigned"}</strong></div>
+                        <div><span>Checked In</span><strong>{booking.checkedIn ? "Yes" : "No"}</strong></div>
+                        <div><span>Email</span><strong>{booking.passenger?.email || "-"}</strong></div>
+                        <div><span>Booked</span><strong>{booking.createdAt ? new Date(booking.createdAt).toLocaleDateString("en-GB") : "-"}</strong></div>
+                        <div><span>Cancellation Reason</span><strong>{booking.cancellationReason || "-"}</strong></div>
+                      </div>
+                      {booking.requestHistory?.length > 0 && (
+                        <div className="admin-detail-extras">
+                          Latest request: {formatRequestType(booking.requestHistory[0].requestType)} ({booking.requestHistory[0].status})
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
         {!loading && !error && tab === "reports" && (
           <div className="reports-section">
             <div className="reports-header-row">
@@ -343,87 +376,82 @@ export function AdminDashboardPage({ onNavigate }) {
                 className="export-btn"
                 onClick={() => exportCSV(bookings, "leedsair-full-report.csv")}
               >
-                ⬇ Export all bookings CSV
+                Export all bookings CSV
               </button>
             </div>
 
             {!reports && <LoadingSpinner message="Generating reports..." />}
 
-            {reports && (<>
-              {/* Summary stats */}
-              <div className="admin-metrics" style={{marginBottom:"2rem"}}>
-                <MetricCard icon="📉" value={`${reports.cancellationRate ?? "—"}%`} label="Cancellation Rate" />
-                <MetricCard icon="⏰" value={reports.peakBookingHour ?? "—"}         label="Peak Booking Hour" />
-                <MetricCard icon="🛣" value={reports.popularRoutes?.[0]?.route ?? "—"} label="Most Popular Route" highlight />
-                <MetricCard icon="💷" value={`£${(reports.revenuePerRoute?.[0]?.revenue ?? 0).toLocaleString()}`} label="Top Route Revenue" />
-              </div>
-
-              <div className="reports-grid">
-
-                {/* Bookings per flight */}
-                <div className="report-card">
-                  <h3>✈ Bookings per Flight</h3>
-                  <BarChart
-                    data={reports.bookingsPerFlight}
-                    labelKey="flightNumber"
-                    valueKey="count"
-                    color="var(--sky)"
-                  />
+            {reports && (
+              <>
+                <div className="admin-metrics" style={{ marginBottom: "2rem" }}>
+                  <MetricCard icon="Rate" value={`${reports.cancellationRate ?? "-"}%`} label="Cancellation Rate" />
+                  <MetricCard icon="Peak" value={reports.peakBookingHour ?? "-"} label="Peak Booking Hour" />
+                  <MetricCard icon="Route" value={reports.popularRoutes?.[0]?.route ?? "-"} label="Most Popular Route" highlight />
+                  <MetricCard icon="Revenue" value={`£${(reports.revenuePerRoute?.[0]?.revenue ?? 0).toLocaleString()}`} label="Top Route Revenue" />
+                  <MetricCard icon="Loyalty" value={reports.loyaltyMix?.[0]?.count ?? 0} label="Loyalty Bookings" />
                 </div>
 
-                {/* Popular routes */}
-                <div className="report-card">
-                  <h3>🛣 Most Popular Routes</h3>
-                  <BarChart
-                    data={reports.popularRoutes}
-                    labelKey="route"
-                    valueKey="count"
-                    color="#7c3aed"
-                  />
-                </div>
+                <div className="reports-grid">
+                  <div className="report-card">
+                    <h3>Bookings per Flight</h3>
+                    <BarChart data={reports.bookingsPerFlight} labelKey="flightNumber" valueKey="count" color="var(--sky)" />
+                  </div>
 
-                {/* Revenue per route */}
-                <div className="report-card">
-                  <h3>💷 Revenue per Route</h3>
-                  <BarChart
-                    data={reports.revenuePerRoute}
-                    labelKey="route"
-                    valueKey="revenue"
-                    prefix="£"
-                    color="var(--success)"
-                  />
-                </div>
+                  <div className="report-card">
+                    <h3>Most Popular Routes</h3>
+                    <BarChart data={reports.popularRoutes} labelKey="route" valueKey="count" color="#7c3aed" />
+                  </div>
 
-                {/* Cancellation rate gauge */}
-                <div className="report-card report-card--center">
-                  <h3>📉 Cancellation Rate</h3>
-                  <div className="cancellation-gauge">
-                    <svg viewBox="0 0 120 70" className="gauge-svg">
-                      <path d="M10,60 A50,50 0 0,1 110,60" fill="none" stroke="#e5e7eb" strokeWidth="12" strokeLinecap="round" />
-                      <path
-                        d="M10,60 A50,50 0 0,1 110,60"
-                        fill="none"
-                        stroke={reports.cancellationRate > 20 ? "#ef4444" : reports.cancellationRate > 10 ? "#f59e0b" : "#22c55e"}
-                        strokeWidth="12"
-                        strokeLinecap="round"
-                        strokeDasharray={`${(reports.cancellationRate / 100) * 157} 157`}
-                      />
-                    </svg>
-                    <div className="gauge-value">{reports.cancellationRate ?? "—"}%</div>
-                    <div className="gauge-label">of all bookings cancelled</div>
+                  <div className="report-card">
+                    <h3>Revenue per Route</h3>
+                    <BarChart data={reports.revenuePerRoute} labelKey="route" valueKey="revenue" prefix="£" color="var(--success)" />
+                  </div>
+
+                  <div className="report-card report-card--center">
+                    <h3>Cancellation Rate</h3>
+                    <div className="cancellation-gauge">
+                      <svg viewBox="0 0 120 70" className="gauge-svg">
+                        <path d="M10,60 A50,50 0 0,1 110,60" fill="none" stroke="#e5e7eb" strokeWidth="12" strokeLinecap="round" />
+                        <path
+                          d="M10,60 A50,50 0 0,1 110,60"
+                          fill="none"
+                          stroke={reports.cancellationRate > 20 ? "#ef4444" : reports.cancellationRate > 10 ? "#f59e0b" : "#22c55e"}
+                          strokeWidth="12"
+                          strokeLinecap="round"
+                          strokeDasharray={`${(reports.cancellationRate / 100) * 157} 157`}
+                        />
+                      </svg>
+                      <div className="gauge-value">{reports.cancellationRate ?? "-"}%</div>
+                      <div className="gauge-label">of all bookings cancelled</div>
+                    </div>
+                  </div>
+
+                  <div className="report-card">
+                    <h3>Revenue Trend</h3>
+                    <BarChart data={reports.monthlyRevenue} labelKey="month" valueKey="revenue" prefix="£" color="#0f766e" />
+                  </div>
+
+                  <div className="report-card">
+                    <h3>Bookings by Status</h3>
+                    <BarChart data={reports.bookingsByStatus} labelKey="label" valueKey="count" color="#1d4ed8" />
+                  </div>
+
+                  <div className="report-card">
+                    <h3>Cancellation Reasons</h3>
+                    <BarChart data={reports.cancellationReasons} labelKey="label" valueKey="count" color="#dc2626" />
+                  </div>
+
+                  <div className="report-card">
+                    <h3>Loyalty Member Activity</h3>
+                    <BarChart data={reports.loyaltyMix} labelKey="label" valueKey="count" color="#7c3aed" />
                   </div>
                 </div>
-
-              </div>
-            </>)}
+              </>
+            )}
           </div>
         )}
 
-        {/* ════════════════════════════════════════════════
-            TAB: MODIFICATIONS
-            PRD §4.11: Monitor modification requests,
-            admin approval workflow
-           ════════════════════════════════════════════════ */}
         {!loading && !error && tab === "modifications" && (
           <div className="modifications-section">
             <h2>Modification Requests</h2>
@@ -438,7 +466,7 @@ export function AdminDashboardPage({ onNavigate }) {
               </div>
             ) : (
               <div className="admin-table-wrapper">
-                <div className="admin-table-header" style={{gridTemplateColumns:"1fr 1fr 1fr 1fr 1fr 1.5fr"}}>
+                <div className="admin-table-header" style={{ gridTemplateColumns: "1fr 1fr 1fr 1fr 1.2fr 1.6fr" }}>
                   <span>Reference</span>
                   <span>Passenger</span>
                   <span>Route</span>
@@ -446,36 +474,64 @@ export function AdminDashboardPage({ onNavigate }) {
                   <span>Requested</span>
                   <span>Actions</span>
                 </div>
-                {modifications.map(b => (
-                  <div className="admin-table-row" key={b.id || b.bookingReference}
-                    style={{gridTemplateColumns:"1fr 1fr 1fr 1fr 1fr 1.5fr"}}>
-                    <span className="ref-value">{b.bookingReference || b.id}</span>
-                    <span>{b.passenger?.firstName} {b.passenger?.lastName}</span>
-                    <span>{b.flight?.from || b.from} → {b.flight?.to || b.to}</span>
-                    <span>{b.modificationRequested || "Pending"}</span>
-                    <span>{b.modificationRequestedAt ? new Date(b.modificationRequestedAt).toLocaleDateString("en-GB") : "—"}</span>
-                    <span className="admin-action-btns">
-                      <button className="admin-approve-btn">✓ Approve</button>
-                      <button className="admin-reject-btn">✗ Reject</button>
-                    </span>
+                {modifications.map(({ booking, request }) => (
+                  <div className="admin-modification-row" key={`${booking.id || booking.bookingReference}-${request.id}`}>
+                    <div className="admin-table-row" style={{ gridTemplateColumns: "1fr 1fr 1fr 1fr 1.2fr 1.6fr" }}>
+                      <span className="ref-value">{booking.bookingReference || booking.id}</span>
+                      <span>{booking.passenger?.firstName} {booking.passenger?.lastName}</span>
+                      <span>{booking.flight?.from || booking.from} - {booking.flight?.to || booking.to}</span>
+                      <span>{formatRequestType(request.requestType)}</span>
+                      <span>{request.createdAt ? new Date(request.createdAt).toLocaleString("en-GB") : "-"}</span>
+                      <span className="admin-action-btns">
+                        <button
+                          className="admin-approve-btn"
+                          onClick={() => handleDecision(request.id, "approved")}
+                          disabled={decisionLoadingId === request.id}
+                        >
+                          {decisionLoadingId === request.id ? "Saving..." : "Approve"}
+                        </button>
+                        <button
+                          className="admin-reject-btn"
+                          onClick={() => handleDecision(request.id, "rejected")}
+                          disabled={decisionLoadingId === request.id}
+                        >
+                          {decisionLoadingId === request.id ? "Saving..." : "Reject"}
+                        </button>
+                      </span>
+                    </div>
+                    <div className="admin-modification-detail">
+                      <p className="admin-modification-description">
+                        {request.description || "No customer note was provided for this request."}
+                      </p>
+                      <textarea
+                        className="admin-note-input"
+                        rows={3}
+                        placeholder="Optional admin note for this decision"
+                        value={decisionNotes[request.id] || ""}
+                        onChange={(e) =>
+                          setDecisionNotes((current) => ({
+                            ...current,
+                            [request.id]: e.target.value,
+                          }))
+                        }
+                      />
+                    </div>
                   </div>
                 ))}
               </div>
             )}
 
-            {/* Track availability / cancellations / changes — PRD §5 */}
-            <div style={{marginTop:"2rem"}}>
-              <h3 style={{marginBottom:"1rem"}}>Change Tracking Summary</h3>
+            <div style={{ marginTop: "2rem" }}>
+              <h3 style={{ marginBottom: "1rem" }}>Change Tracking Summary</h3>
               <div className="admin-metrics">
-                <MetricCard icon="✏️" value={bookings.filter(b => b.status === "Pending").length}    label="Pending Changes" />
-                <MetricCard icon="❌" value={bookings.filter(b => b.status === "Cancelled").length}  label="Cancellations" />
-                <MetricCard icon="✅" value={bookings.filter(b => b.checkedIn).length}               label="Checked In" />
-                <MetricCard icon="🎫" value={bookings.filter(b => b.status === "Confirmed").length}  label="Confirmed" />
+                <MetricCard icon="Changes" value={modifications.length} label="Pending Changes" />
+                <MetricCard icon="Cancel" value={bookings.filter((booking) => booking.status === "Cancelled").length} label="Cancellations" />
+                <MetricCard icon="Boarded" value={bookings.filter((booking) => booking.checkedIn).length} label="Checked In" />
+                <MetricCard icon="Confirmed" value={bookings.filter((booking) => booking.status === "Confirmed").length} label="Confirmed" />
               </div>
             </div>
           </div>
         )}
-
       </div>
     </div>
   );

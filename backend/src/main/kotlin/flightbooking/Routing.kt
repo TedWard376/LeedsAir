@@ -156,6 +156,33 @@ fun Application.configureRouting() {
             }
         }
 
+        post("/api/admin/modification-requests/{id}/decision") {
+            val requestId = call.parameters["id"]?.toIntOrNull()
+            if (requestId == null) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Missing or invalid request id"))
+                return@post
+            }
+
+            val requestBody = call.receiveText().trim()
+            if (requestBody.isBlank()) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Request body cannot be empty"))
+                return@post
+            }
+
+            try {
+                call.respond(AdminService.resolveModificationRequest(call.request.headers["Authorization"], requestId, requestBody))
+            } catch (_: SerializationException) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid admin decision payload"))
+            } catch (e: IllegalArgumentException) {
+                val status = when (e.message) {
+                    "Modification request not found" -> HttpStatusCode.NotFound
+                    "Missing or invalid Authorization header", "Invalid admin token" -> HttpStatusCode.Unauthorized
+                    else -> HttpStatusCode.BadRequest
+                }
+                call.respond(status, mapOf("error" to (e.message ?: "Unable to update modification request")))
+            }
+        }
+
         get("/api/bookings") {
             val rawUserId = call.request.queryParameters["userId"]
             val userId = rawUserId?.toIntOrNull() ?: 1

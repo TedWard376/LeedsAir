@@ -2,6 +2,18 @@ import { useState } from "react";
 import { cancelBooking, checkIn, getBookingByRef, modifyBooking } from "../services/api";
 import { LoadingSpinner, ErrorMessage } from "../components/StatusMessages";
 
+function formatRequestType(type) {
+  if (!type) return "General request";
+  return type
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function formatRequestStatus(status) {
+  if (!status) return "Pending";
+  return status.replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
 export function ManageBookingPage() {
   const [ref, setRef] = useState("");
   const [lastName, setLastName] = useState("");
@@ -13,6 +25,45 @@ export function ManageBookingPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [actionMessage, setActionMessage] = useState(null);
   const [boardingPass, setBoardingPass] = useState(null);
+
+  const bookingStatus = booking?.status || "Confirmed";
+  const requestHistory = booking?.requestHistory || [];
+  const hasPendingDateChange = requestHistory.some(
+    (entry) => entry.requestType === "date_change" && entry.status?.toLowerCase() === "pending"
+  );
+  const hasPendingExtras = requestHistory.some(
+    (entry) => entry.requestType === "extra_request" && entry.status?.toLowerCase() === "pending"
+  );
+  const isCancelled = bookingStatus === "Cancelled";
+  const isCheckedIn = bookingStatus === "CheckedIn";
+  const actionDisabledState = {
+    "modify-date": !booking || isCancelled || hasPendingDateChange,
+    "add-extras": !booking || isCancelled || hasPendingExtras,
+    checkin: !booking || isCancelled || isCheckedIn,
+    cancel: !booking || isCancelled || isCheckedIn,
+  };
+  const actionDisabledReason = {
+    "modify-date": isCancelled
+      ? "This booking has already been cancelled."
+      : hasPendingDateChange
+        ? "A date change request is already pending review."
+        : "",
+    "add-extras": isCancelled
+      ? "This booking has already been cancelled."
+      : hasPendingExtras
+        ? "An extras request is already pending review."
+        : "",
+    checkin: isCancelled
+      ? "Cancelled bookings cannot be checked in."
+      : isCheckedIn
+        ? "This booking has already been checked in."
+        : "",
+    cancel: isCancelled
+      ? "This booking has already been cancelled."
+      : isCheckedIn
+        ? "Checked-in bookings can no longer be cancelled online."
+        : "",
+  };
 
   async function handleLookup(e) {
     e.preventDefault();
@@ -86,6 +137,12 @@ export function ManageBookingPage() {
   }
 
   function openAction(action) {
+    if (actionDisabledState[action]) {
+      setError(actionDisabledReason[action] || "This action is not available right now.");
+      setActionMessage(null);
+      return;
+    }
+
     setActiveAction(action);
     setRequestText("");
     setActionMessage(null);
@@ -141,11 +198,29 @@ export function ManageBookingPage() {
               <div><span>Cancellation Reason</span><strong>{booking.cancellationReason}</strong></div>
             )}
           </div>
+          {(isCancelled || isCheckedIn || hasPendingDateChange || hasPendingExtras) && (
+            <div className="manage-status-banner">
+              <strong>Action availability updated</strong>
+              <p>
+                {isCancelled && "This booking is cancelled, so online changes are now locked."}
+                {!isCancelled && isCheckedIn && "This booking is already checked in, so cancellation is locked."}
+                {!isCancelled && !isCheckedIn && (hasPendingDateChange || hasPendingExtras) &&
+                  "You already have a pending request, so duplicate requests are disabled until it is reviewed."}
+              </p>
+            </div>
+          )}
           <div className="manage-actions">
-            <button className={`action-btn ${activeAction === "modify-date" ? "action-btn--active" : ""}`} type="button" onClick={() => openAction("modify-date")}>Modify Date</button>
-            <button className={`action-btn ${activeAction === "add-extras" ? "action-btn--active" : ""}`} type="button" onClick={() => openAction("add-extras")}>Add Extras</button>
-            <button className={`action-btn checkin-btn ${activeAction === "checkin" ? "action-btn--active" : ""}`} type="button" onClick={() => openAction("checkin")}>Check In</button>
-            <button className={`action-btn cancel-action-btn ${activeAction === "cancel" ? "action-btn--active" : ""}`} type="button" onClick={() => openAction("cancel")}>Cancel Flight</button>
+            <button className={`action-btn ${activeAction === "modify-date" ? "action-btn--active" : ""}`} type="button" onClick={() => openAction("modify-date")} disabled={actionDisabledState["modify-date"]}>Modify Date</button>
+            <button className={`action-btn ${activeAction === "add-extras" ? "action-btn--active" : ""}`} type="button" onClick={() => openAction("add-extras")} disabled={actionDisabledState["add-extras"]}>Add Extras</button>
+            <button className={`action-btn checkin-btn ${activeAction === "checkin" ? "action-btn--active" : ""}`} type="button" onClick={() => openAction("checkin")} disabled={actionDisabledState.checkin}>Check In</button>
+            <button className={`action-btn cancel-action-btn ${activeAction === "cancel" ? "action-btn--active" : ""}`} type="button" onClick={() => openAction("cancel")} disabled={actionDisabledState.cancel}>Cancel Flight</button>
+          </div>
+
+          <div className="manage-action-help-grid">
+            <p className="manage-action-help">{actionDisabledReason["modify-date"] || "Submit a request to move this trip to a different date."}</p>
+            <p className="manage-action-help">{actionDisabledReason["add-extras"] || "Request baggage, seats, or other extras for this booking."}</p>
+            <p className="manage-action-help">{actionDisabledReason.checkin || "Generate your boarding pass once you're ready to travel."}</p>
+            <p className="manage-action-help">{actionDisabledReason.cancel || "Cancel this booking and record the reason for your report history."}</p>
           </div>
 
           {activeAction && activeAction !== "checkin" && (
@@ -190,6 +265,33 @@ export function ManageBookingPage() {
           )}
 
           {actionMessage && <div className="confirmation-banner" style={{ marginTop: "1rem" }}><p>{actionMessage}</p></div>}
+
+          <div className="manage-history-card">
+            <div className="manage-history-header">
+              <h3>Request History</h3>
+              <p>Track every cancellation and change request for this booking.</p>
+            </div>
+            {requestHistory.length === 0 ? (
+              <p className="manage-history-empty">No changes have been requested for this booking yet.</p>
+            ) : (
+              <div className="manage-history-list">
+                {requestHistory.map((entry) => (
+                  <div key={entry.id} className="manage-history-item">
+                    <div className="manage-history-item-top">
+                      <strong>{formatRequestType(entry.requestType)}</strong>
+                      <span className={`status-badge status-${entry.status?.toLowerCase() || "pending"}`}>
+                        {formatRequestStatus(entry.status)}
+                      </span>
+                    </div>
+                    <p>{entry.description || "No extra notes were provided for this request."}</p>
+                    <span className="manage-history-date">
+                      {new Date(entry.createdAt).toLocaleString("en-GB")}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
           {boardingPass && (
             <div className="booking-detail-card" style={{ marginTop: "1rem" }}>
