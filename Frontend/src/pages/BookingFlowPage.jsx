@@ -9,6 +9,48 @@ const SAVED_CARD_STORAGE_KEY = "leedsair_saved_card";
 
 const FLOW_STEPS = ["Flight summary", "Passenger details", "Seats", "Extras", "Review & Pay"];
 
+function detectCardBrand(cardNumber) {
+  const digits = cardNumber.replace(/\D/g, "");
+  if (digits.startsWith("4")) return "Visa";
+  if (/^5[1-5]/.test(digits)) return "Mastercard";
+  if (/^3[47]/.test(digits)) return "American Express";
+  if (digits.startsWith("6")) return "Discover";
+  return digits ? "Card" : "";
+}
+
+function isValidCardNumber(cardNumber) {
+  const digits = cardNumber.replace(/\D/g, "");
+  if (digits.length < 12) return false;
+  let sum = 0;
+  let shouldDouble = false;
+  for (let i = digits.length - 1; i >= 0; i -= 1) {
+    let digit = Number(digits[i]);
+    if (shouldDouble) {
+      digit *= 2;
+      if (digit > 9) digit -= 9;
+    }
+    sum += digit;
+    shouldDouble = !shouldDouble;
+  }
+  return sum % 10 === 0;
+}
+
+function isValidExpiry(expiryValue) {
+  const [monthRaw, yearRaw] = expiryValue.split("/").map((part) => part.trim());
+  const month = Number(monthRaw);
+  const year = Number(yearRaw?.length === 2 ? `20${yearRaw}` : yearRaw);
+  if (!Number.isFinite(month) || !Number.isFinite(year) || month < 1 || month > 12) return false;
+  const now = new Date();
+  const expiryDate = new Date(year, month, 0, 23, 59, 59);
+  return expiryDate >= now;
+}
+
+function isValidCvv(cvv, cardNumber) {
+  const digits = cvv.replace(/\D/g, "");
+  const brand = detectCardBrand(cardNumber);
+  return brand === "American Express" ? digits.length === 4 : digits.length === 3;
+}
+
 function estimateLoyaltyPoints(total, travelClass, includeFirstBookingBonus) {
   const multiplier = travelClass === "business" ? 2 : 1;
   const basePoints = Math.max(0, Math.floor(total)) * multiplier;
@@ -318,6 +360,14 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
   }, 0);
   const extrasCost = extras.reduce((s, id) => s + (EXTRAS_LIST.find(e => e.id === id)?.price || 0), 0);
   const total = baseFareTotal + seatCostTotal + extrasCost;
+  const activeCardNumber = useSavedCard && savedCard ? savedCard.maskedNumber : cardNum;
+  const activeCardName = useSavedCard && savedCard ? savedCard.cardholderName : cardName;
+  const activeCardExpiry = useSavedCard && savedCard ? savedCard.expiryDisplay : cardExp;
+  const cardBrand = useSavedCard && savedCard ? "Saved card" : detectCardBrand(activeCardNumber);
+  const cardNumberValid = useSavedCard && savedCard ? true : isValidCardNumber(activeCardNumber);
+  const expiryValid = useSavedCard && savedCard ? true : isValidExpiry(activeCardExpiry);
+  const cvvValid = isValidCvv(cardCvv, activeCardNumber);
+  const paymentReady = activeCardName.trim() && cardNumberValid && expiryValid && cvvValid;
 
   function toggleExtra(id) {
     setExtras(p => p.includes(id) ? p.filter(e => e !== id) : [...p, id]);
@@ -339,17 +389,14 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
   async function handlePay() {
     setSubmitting(true); setSubmitErr(null);
     try {
-      const activeCardNumber = useSavedCard && savedCard ? savedCard.maskedNumber : cardNum;
-      const activeCardName = useSavedCard && savedCard ? savedCard.cardholderName : cardName;
-      const activeCardExpiry = useSavedCard && savedCard ? savedCard.expiryDisplay : cardExp;
       const expiryParts = activeCardExpiry.split("/").map(part => part.trim());
       const expiryMonth = Number(expiryParts[0]);
       const expiryYear = expiryParts[1]
         ? Number(expiryParts[1].length === 2 ? `20${expiryParts[1]}` : expiryParts[1])
         : NaN;
 
-      if (!activeCardNumber.trim() || !activeCardName.trim() || !cardCvv.trim() || !Number.isFinite(expiryMonth) || !Number.isFinite(expiryYear)) {
-        setSubmitErr("Please enter valid payment details before confirming your booking.");
+      if (!paymentReady || !Number.isFinite(expiryMonth) || !Number.isFinite(expiryYear)) {
+        setSubmitErr("Check your card number, expiry date, cardholder name, and CVV before confirming payment.");
         setSubmitting(false);
         return;
       }
@@ -739,6 +786,11 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
                 </div>
               </div>
             )}
+            <div className="payment-trust-row">
+              <div className="payment-trust-pill">Instant confirmation</div>
+              <div className="payment-trust-pill">No CVV saved</div>
+              <div className="payment-trust-pill">Secure checkout</div>
+            </div>
             <div className="form-row">
               <div className="form-group" style={{flex:2}}>
                 <label>Card number</label>
@@ -748,6 +800,10 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
                   placeholder="1234 5678 9012 3456"
                   readOnly={useSavedCard && Boolean(savedCard)}
                 />
+                {!useSavedCard && cardBrand && <div className="payment-field-hint">{cardBrand}</div>}
+                {!useSavedCard && activeCardNumber && !cardNumberValid && (
+                  <div className="payment-field-error">Enter a valid card number.</div>
+                )}
               </div>
               <div className="form-group">
                 <label>Expiry</label>
@@ -757,10 +813,16 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
                   placeholder="MM / YY"
                   readOnly={useSavedCard && Boolean(savedCard)}
                 />
+                {!useSavedCard && activeCardExpiry && !expiryValid && (
+                  <div className="payment-field-error">Use a valid future expiry date.</div>
+                )}
               </div>
               <div className="form-group">
                 <label>CVV</label>
                 <input type="password" value={cardCvv} onChange={e=>setCardCvv(e.target.value)} placeholder="123" />
+                {cardCvv && !cvvValid && (
+                  <div className="payment-field-error">Enter a valid CVV.</div>
+                )}
               </div>
             </div>
             <div className="form-group">
@@ -771,8 +833,16 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
                 placeholder="As it appears on your card"
                 readOnly={useSavedCard && Boolean(savedCard)}
               />
+              {!useSavedCard && activeCardName && activeCardName.trim().length < 3 && (
+                <div className="payment-field-error">Enter the full cardholder name.</div>
+              )}
             </div>
             <div className="payment-secure-note">🔒 Secured with 3D Secure &amp; PCI-DSS encryption</div>
+            <div className={`payment-readiness ${paymentReady ? "payment-readiness--ready" : ""}`}>
+              {paymentReady
+                ? "Payment details look good. You can confirm your booking."
+                : "Complete valid payment details to enable a smoother checkout."}
+            </div>
           </div>
 
           {!useSavedCard && (

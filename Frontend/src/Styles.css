@@ -2250,6 +2250,25 @@ body {
   font-size: 1.4rem;
   margin-bottom: 1rem;
 }
+.home-section-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-end;
+  margin-bottom: 1rem;
+}
+.home-section-copy {
+  color: var(--muted);
+  font-size: .9rem;
+}
+.home-section-badge {
+  background: #eef4ff;
+  color: var(--sky);
+  border-radius: 999px;
+  padding: .35rem .7rem;
+  font-size: .78rem;
+  font-weight: 700;
+}
 .dest-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -2267,11 +2286,91 @@ body {
   transition: transform .12s, box-shadow .12s;
 }
 .dest-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(10,22,40,.13); }
+.dest-rank {
+  font-size: .72rem;
+  font-weight: 700;
+  color: var(--muted);
+}
 .dest-flag { font-size: 2rem; }
 .dest-info { display: flex; flex-direction: column; }
 .dest-city { font-weight: 700; font-size: .95rem; }
 .dest-code { font-size: .75rem; color: var(--muted); }
 .dest-price { font-size: .85rem; color: var(--sky); font-weight: 700; margin-top: auto; }
+.dest-meta { font-size: .78rem; color: var(--muted); }
+.home-discovery-grid {
+  max-width: 900px;
+  margin: 0 auto 2rem;
+  padding: 0 1.5rem;
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 1rem;
+}
+.discovery-panel {
+  background: var(--white);
+  border-radius: 16px;
+  padding: 1.35rem 1.4rem;
+  box-shadow: var(--shadow);
+  border: 1px solid var(--border);
+}
+.discovery-panel h3 {
+  font-family: 'DM Serif Display', serif;
+  font-size: 1.35rem;
+  margin: .35rem 0 .5rem;
+}
+.discovery-panel p {
+  color: var(--muted);
+  font-size: .9rem;
+  margin-bottom: 1rem;
+}
+.discovery-panel--value {
+  background: linear-gradient(135deg, #fff7db, #fff1bf);
+}
+.discovery-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .6rem;
+}
+.discovery-chip {
+  border: 1px solid var(--border);
+  background: var(--off);
+  border-radius: 999px;
+  padding: .5rem .9rem;
+  cursor: pointer;
+  font-size: .84rem;
+  font-weight: 700;
+  color: var(--text);
+}
+.discovery-chip:hover {
+  border-color: var(--sky);
+  color: var(--sky);
+}
+.home-inspiration {
+  max-width: 900px;
+  margin: 0 auto 2rem;
+  padding: 0 1.5rem;
+}
+.inspiration-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+}
+.inspiration-card {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 1.2rem;
+  box-shadow: var(--shadow);
+}
+.inspiration-card h3 {
+  font-family: 'DM Serif Display', serif;
+  font-size: 1.25rem;
+  margin: .35rem 0 .5rem;
+}
+.inspiration-card p {
+  color: var(--muted);
+  font-size: .9rem;
+  margin-bottom: 1rem;
+}
 
 /* ═══════════════════════════════════════════════════════════
    BOOKING FLOW PAGE
@@ -2638,6 +2737,42 @@ body {
   color: var(--muted);
   margin-top: .6rem;
 }
+.payment-trust-row {
+  display: flex;
+  gap: .6rem;
+  flex-wrap: wrap;
+  margin-bottom: .9rem;
+}
+.payment-trust-pill {
+  background: #eef7ff;
+  color: var(--sky);
+  border-radius: 999px;
+  padding: .35rem .7rem;
+  font-size: .76rem;
+  font-weight: 700;
+}
+.payment-field-hint {
+  margin-top: .35rem;
+  font-size: .8rem;
+  color: var(--muted);
+}
+.payment-field-error {
+  margin-top: .35rem;
+  font-size: .8rem;
+  color: var(--error);
+}
+.payment-readiness {
+  margin-top: .85rem;
+  padding: .8rem .95rem;
+  border-radius: 10px;
+  background: #fff7ed;
+  color: #9a3412;
+  font-size: .85rem;
+}
+.payment-readiness--ready {
+  background: #ecfdf5;
+  color: #166534;
+}
 
 .tcs-label {
   display: flex;
@@ -2720,6 +2855,15 @@ body {
   .frc-fare-btn { flex: 1; }
   .fare-tiers-grid { grid-template-columns: 1fr; }
   .dest-grid { grid-template-columns: repeat(2, 1fr); }
+  .home-section-header,
+  .home-discovery-grid,
+  .inspiration-grid { grid-template-columns: 1fr; }
+  .home-section-header {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .home-discovery-grid { display: grid; }
   .progress-label, .flow-label { display: none; }
   .dpb-day { min-width: 50px; }
 }

@@ -68,18 +68,18 @@ object SeedDataService {
             if (flights.size < 3) return@transaction
 
             val demoUsers = listOf(
-                DemoBookingSeed("Maya", "Patel", "maya.patel@demo.leedsair.local", "confirmed", 184.50, emptyList()),
-                DemoBookingSeed("Oliver", "Grant", "oliver.grant@demo.leedsair.local", "checked_in", 326.00, emptyList()),
-                DemoBookingSeed("Sophie", "Walker", "sophie.walker@demo.leedsair.local", "cancelled", 142.99, emptyList()),
-                DemoBookingSeed("Daniel", "Morgan", "daniel.morgan@demo.leedsair.local", "confirmed", 268.40, listOf("seat_change")),
-                DemoBookingSeed("Aisha", "Rahman", "aisha.rahman@demo.leedsair.local", "confirmed", 512.75, listOf("date_change")),
-                DemoBookingSeed("Lucas", "Bennett", "lucas.bennett@demo.leedsair.local", "confirmed", 221.10, emptyList()),
-                DemoBookingSeed("Emily", "Foster", "emily.foster@demo.leedsair.local", "checked_in", 305.65, emptyList()),
-                DemoBookingSeed("Noah", "Hughes", "noah.hughes@demo.leedsair.local", "confirmed", 410.20, listOf("meal_change")),
-                DemoBookingSeed("Grace", "Murphy", "grace.murphy@demo.leedsair.local", "cancelled", 167.35, emptyList()),
-                DemoBookingSeed("Ethan", "Cole", "ethan.cole@demo.leedsair.local", "confirmed", 289.90, listOf("date_change")),
-                DemoBookingSeed("Zara", "Khan", "zara.khan@demo.leedsair.local", "checked_in", 348.55, emptyList()),
-                DemoBookingSeed("Leo", "Turner", "leo.turner@demo.leedsair.local", "confirmed", 198.75, listOf("seat_change")),
+                DemoBookingSeed("Maya", "Patel", "maya.patel@demo.leedsair.local", "confirmed", 184.50, emptyList(), null),
+                DemoBookingSeed("Oliver", "Grant", "oliver.grant@demo.leedsair.local", "checked_in", 326.00, emptyList(), null),
+                DemoBookingSeed("Sophie", "Walker", "sophie.walker@demo.leedsair.local", "cancelled", 142.99, emptyList(), "Family emergency before departure."),
+                DemoBookingSeed("Daniel", "Morgan", "daniel.morgan@demo.leedsair.local", "confirmed", 268.40, listOf("seat_change"), null),
+                DemoBookingSeed("Aisha", "Rahman", "aisha.rahman@demo.leedsair.local", "confirmed", 512.75, listOf("date_change"), null),
+                DemoBookingSeed("Lucas", "Bennett", "lucas.bennett@demo.leedsair.local", "confirmed", 221.10, listOf("bag_addition"), null),
+                DemoBookingSeed("Emily", "Foster", "emily.foster@demo.leedsair.local", "checked_in", 305.65, emptyList(), null),
+                DemoBookingSeed("Noah", "Hughes", "noah.hughes@demo.leedsair.local", "confirmed", 410.20, listOf("meal_change"), null),
+                DemoBookingSeed("Grace", "Murphy", "grace.murphy@demo.leedsair.local", "cancelled", 167.35, emptyList(), "Unable to travel due to illness."),
+                DemoBookingSeed("Ethan", "Cole", "ethan.cole@demo.leedsair.local", "confirmed", 289.90, listOf("date_change"), null),
+                DemoBookingSeed("Zara", "Khan", "zara.khan@demo.leedsair.local", "checked_in", 348.55, emptyList(), null),
+                DemoBookingSeed("Leo", "Turner", "leo.turner@demo.leedsair.local", "confirmed", 198.75, listOf("seat_change", "special_assistance"), null),
             )
 
             demoUsers.forEachIndexed { index, seed ->
@@ -148,10 +148,23 @@ object SeedDataService {
                             "seat_change" -> "Requested aisle seat closer to the front."
                             "date_change" -> "Asked to move outbound flight to the next day."
                             "meal_change" -> "Requested a vegetarian meal for both segments."
+                            "bag_addition" -> "Needs one extra 20kg checked bag for a longer stay."
+                            "special_assistance" -> "Requested wheelchair support at departure and arrival."
                             else -> "Customer requested an itinerary update."
                         }
                         row[status] = "pending"
                         row[createdAt] = bookingTime.plusDays(1)
+                        row[processedBy] = null
+                    }
+                }
+
+                if (seed.cancellationReason != null) {
+                    ModificationRequestsTable.insert { row ->
+                        row[ModificationRequestsTable.bookingId] = bookingId
+                        row[ModificationRequestsTable.requestType] = "cancellation"
+                        row[description] = seed.cancellationReason
+                        row[status] = "completed"
+                        row[createdAt] = bookingTime.plusHours(6)
                         row[processedBy] = null
                     }
                 }
@@ -190,12 +203,12 @@ object SeedDataService {
             }
 
             val visibleBookings = listOf(
-                VisibleDemoBookingSeed("Jamie", "Carter", "confirmed", 196.80, 0),
-                VisibleDemoBookingSeed("Jamie", "Carter", "checked_in", 248.40, 1),
-                VisibleDemoBookingSeed("Jamie", "Carter", "cancelled", 133.25, 2),
-                VisibleDemoBookingSeed("Jamie", "Carter", "confirmed", 421.30, 3),
-                VisibleDemoBookingSeed("Jamie", "Carter", "confirmed", 158.90, 4),
-                VisibleDemoBookingSeed("Jamie", "Carter", "checked_in", 287.45, 5),
+                VisibleDemoBookingSeed("Jamie", "Carter", "confirmed", 196.80, 0, null),
+                VisibleDemoBookingSeed("Jamie", "Carter", "checked_in", 248.40, 1, null),
+                VisibleDemoBookingSeed("Jamie", "Carter", "cancelled", 133.25, 2, "Change of plans after a meeting was moved."),
+                VisibleDemoBookingSeed("Jamie", "Carter", "confirmed", 421.30, 3, null),
+                VisibleDemoBookingSeed("Jamie", "Carter", "confirmed", 158.90, 4, null),
+                VisibleDemoBookingSeed("Jamie", "Carter", "checked_in", 287.45, 5, null),
             )
 
             visibleBookings.forEachIndexed { index, seed ->
@@ -242,6 +255,17 @@ object SeedDataService {
                     row[isDummy] = true
                     row[transactionReference] = "txn_visible_${UUID.randomUUID().toString().replace("-", "").take(14)}"
                     row[paymentDate] = bookingTime.plusMinutes(12)
+                }
+
+                if (seed.cancellationReason != null) {
+                    ModificationRequestsTable.insert { row ->
+                        row[ModificationRequestsTable.bookingId] = bookingId
+                        row[ModificationRequestsTable.requestType] = "cancellation"
+                        row[description] = seed.cancellationReason
+                        row[status] = "completed"
+                        row[createdAt] = bookingTime.plusHours(3)
+                        row[processedBy] = null
+                    }
                 }
             }
         }
@@ -515,6 +539,7 @@ object SeedDataService {
         val status: String,
         val totalPrice: Double,
         val requestTypes: List<String>,
+        val cancellationReason: String?,
     )
 
     private data class VisibleDemoBookingSeed(
@@ -523,5 +548,6 @@ object SeedDataService {
         val status: String,
         val totalPrice: Double,
         val flightOffset: Int,
+        val cancellationReason: String?,
     )
 }
