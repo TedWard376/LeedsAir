@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { cancelBooking, checkIn, getBookingByRef, modifyBooking } from "../services/api";
 import { LoadingSpinner, ErrorMessage } from "../components/StatusMessages";
 
@@ -14,7 +14,7 @@ function formatRequestStatus(status) {
   return status.replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-export function ManageBookingPage() {
+export function ManageBookingPage({ initialLookup, onLookupConsumed }) {
   const [ref, setRef] = useState("");
   const [lastName, setLastName] = useState("");
   const [loading, setLoading] = useState(false);
@@ -64,6 +64,26 @@ export function ManageBookingPage() {
         ? "Checked-in bookings can no longer be cancelled online."
         : "",
   };
+
+  useEffect(() => {
+    if (!initialLookup?.ref || !initialLookup?.lastName) return;
+
+    setRef(initialLookup.ref);
+    setLastName(initialLookup.lastName);
+    setLoading(true);
+    setError(null);
+    setBooking(null);
+    setActionMessage(null);
+    setBoardingPass(null);
+
+    getBookingByRef(initialLookup.ref, initialLookup.lastName)
+      .then((data) => setBooking(data))
+      .catch((err) => setError(err.message))
+      .finally(() => {
+        setLoading(false);
+        onLookupConsumed?.();
+      });
+  }, [initialLookup, onLookupConsumed]);
 
   async function handleLookup(e) {
     e.preventDefault();

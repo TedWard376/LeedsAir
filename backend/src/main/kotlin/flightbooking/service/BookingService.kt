@@ -56,6 +56,7 @@ object BookingService {
         val departureTime: String? = null,
         val arrivalTime: String? = null,
         val departureDate: String? = null,
+        val stops: Int = 0,
     )
 
     @Serializable
@@ -553,6 +554,7 @@ object BookingService {
             departureTime = departureDateTime.toLocalTime().toString(),
             arrivalTime = arrivalDateTime.toLocalTime().toString(),
             departureDate = departureDateTime.toLocalDate().toString(),
+            stops = scheduleRow[FlightSchedulesTable.stops],
         )
     }
 

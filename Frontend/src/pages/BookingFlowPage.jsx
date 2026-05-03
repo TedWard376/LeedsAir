@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { createBooking, login, register } from "../services/api";
+import { RouteMap } from "../components/RouteMap";
 
 
 
@@ -709,11 +710,31 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
           {/* Flight */}
           <div className="review-section">
             <h3>Flight</h3>
+            <RouteMap
+              from={flight.from}
+              to={flight.to}
+              stops={flight.stops ?? 0}
+              departureTime={flight.departureTime}
+              arrivalTime={flight.arrivalTime}
+              flightNumber={flight.flightNumber}
+              compact
+              caption="Outbound route"
+            />
             <div className="review-row"><span>Route</span><span>{flight.from} → {flight.to}</span></div>
             <div className="review-row"><span>Flight</span><span>{flight.flightNumber}</span></div>
             <div className="review-row"><span>Departure</span><span>{flight.departureDate} · {flight.departureTime}</span></div>
             <div className="review-row"><span>Class</span><span>{isBiz?"✦ Business":"Economy"} · {flight.selectedFare?.label}</span></div>
             {flight.returnFlight && <>
+              <RouteMap
+                from={flight.returnFlight.from}
+                to={flight.returnFlight.to}
+                stops={flight.returnFlight.stops ?? 0}
+                departureTime={flight.returnFlight.departureTime}
+                arrivalTime={flight.returnFlight.arrivalTime}
+                flightNumber={flight.returnFlight.flightNumber}
+                compact
+                caption="Return route"
+              />
               <div className="review-row"><span>Return flight</span><span>{flight.returnFlight.flightNumber}</span></div>
               <div className="review-row"><span>Return</span><span>{flight.returnFlight.departureDate} · {flight.returnFlight.departureTime}</span></div>
             </>}
