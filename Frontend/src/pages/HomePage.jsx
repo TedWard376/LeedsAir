@@ -54,7 +54,13 @@ export function HomePage({ onSearch, confirmedBooking, onDismissConfirmation }) 
       try {
         // Step 1: get popular routes sorted by booking count from reports API
         const reports = await adminGetReports();
-        const topRoutes = (reports.popularRoutes || []).slice(0, 4);
+        const seenDestinations = new Set();
+        const topRoutes = (reports.popularRoutes || []).filter(({ route }) => {
+          const code = destCode(route);
+          if (!code || seenDestinations.has(code)) return false;
+          seenDestinations.add(code);
+          return true;
+        }).slice(0, 4);
 
         if (!topRoutes.length) { setLoading(false); return; }
 

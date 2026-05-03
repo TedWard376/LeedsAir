@@ -14,7 +14,7 @@ const STATUS_FILTERS = ["All", "Confirmed", "Cancelled", "Pending", "CheckedIn"]
 // ── CSV export helper ─────────────────────────────────────
 function exportCSV(rows, filename) {
   if (!rows.length) return;
-  const headers = ["Reference", "Passenger", "Route", "Date", "Class", "Status", "Price"];
+  const headers = ["Reference", "Passenger", "Route", "Date", "Class", "Status", "Cancellation Reason", "Price"];
   const lines = [
     headers.join(","),
     ...rows.map(b => [
@@ -24,6 +24,7 @@ function exportCSV(rows, filename) {
       b.flight?.departureDate || b.departureDate || "",
       b.travelClass || "Economy",
       b.status || "Confirmed",
+      `"${b.cancellationReason || ""}"`,
       b.totalPrice || "",
     ].join(","))
   ];
