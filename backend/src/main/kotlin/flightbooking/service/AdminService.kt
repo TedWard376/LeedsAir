@@ -1,10 +1,17 @@
 package flightbooking.service
 
+import flightbooking.db.table.LoyaltyAccountsTable
+import flightbooking.db.table.ModificationRequestsTable
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonIgnoreUnknownKeys
+import org.jetbrains.exposed.sql.selectAll
+import org.jetbrains.exposed.sql.transactions.transaction
+import org.jetbrains.exposed.sql.update
 import java.nio.charset.StandardCharsets
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 import java.util.Base64
 
 object AdminService {
@@ -44,8 +51,20 @@ object AdminService {
     )
 
     @Serializable
+    data class ReportBreakdown(
+        val label: String,
+        val count: Int,
+    )
+
+    @Serializable
     data class ReportRevenue(
         val route: String,
+        val revenue: Double,
+    )
+
+    @Serializable
+    data class MonthlyRevenue(
+        val month: String,
         val revenue: Double,
     )
 
@@ -62,6 +81,18 @@ object AdminService {
         val bookingsPerFlight: List<BookingFlightCount>,
         val popularRoutes: List<ReportCount>,
         val revenuePerRoute: List<ReportRevenue>,
+        val bookingsByStatus: List<ReportBreakdown>,
+        val cancellationReasons: List<ReportBreakdown>,
+        val loyaltyMix: List<ReportBreakdown>,
+        val monthlyRevenue: List<MonthlyRevenue>,
+    )
+
+    @OptIn(ExperimentalSerializationApi::class)
+    @Serializable
+    @JsonIgnoreUnknownKeys
+    data class ModificationDecisionRequest(
+        val decision: String = "",
+        val note: String = "",
     )
 
     fun login(requestBody: String): AdminLoginResponse {
@@ -113,6 +144,9 @@ object AdminService {
     fun getReports(authorizationHeader: String?): AdminReports {
         requireAdmin(authorizationHeader)
         val bookings = BookingService.getAllBookingsForAdmin()
+        val loyaltyUserIds = transaction {
+            LoyaltyAccountsTable.selectAll().map { it[LoyaltyAccountsTable.userId] }.toSet()
+        }
 
         val cancellationRate = if (bookings.isEmpty()) 0.0 else {
             bookings.count { it.status == "Cancelled" }.toDouble() / bookings.size.toDouble() * 100.0
@@ -139,6 +173,44 @@ object AdminService {
             .sortedByDescending { it.revenue }
             .take(10)
 
+        val bookingsByStatus = bookings
+            .groupingBy { it.status.ifBlank { "Unknown" } }
+            .eachCount()
+            .entries
+            .sortedByDescending { it.value }
+            .map { ReportBreakdown(label = it.key, count = it.value) }
+
+        val cancellationReasons = bookings
+            .filter { it.status == "Cancelled" }
+            .groupingBy { it.cancellationReason?.takeIf(String::isNotBlank) ?: "No reason recorded" }
+            .eachCount()
+            .entries
+            .sortedByDescending { it.value }
+            .take(8)
+            .map { ReportBreakdown(label = it.key, count = it.value) }
+
+        val loyaltyMix = listOf(
+            ReportBreakdown(
+                label = "Loyalty Members",
+                count = bookings.count { it.userId in loyaltyUserIds }
+            ),
+            ReportBreakdown(
+                label = "Non-members",
+                count = bookings.count { it.userId !in loyaltyUserIds }
+            ),
+        )
+
+        val monthlyRevenue = bookings
+            .filterNot { it.status == "Cancelled" }
+            .groupBy { booking ->
+                runCatching {
+                    LocalDateTime.parse(booking.createdAt).format(DateTimeFormatter.ofPattern("MMM yyyy"))
+                }.getOrDefault(booking.createdAt.take(7))
+            }
+            .map { (month, rows) -> MonthlyRevenue(month = month, revenue = round2(rows.sumOf { it.totalPrice })) }
+            .sortedBy { it.month.takeLast(4) + it.month.take(3) }
+            .takeLast(6)
+
         val peakBookingHour = bookings
             .groupingBy {
                 it.createdAt.substringAfter("T", "00:00").substring(0, 2) + ":00"
@@ -154,7 +226,55 @@ object AdminService {
             bookingsPerFlight = bookingsPerFlight,
             popularRoutes = popularRoutes,
             revenuePerRoute = revenuePerRoute,
+            bookingsByStatus = bookingsByStatus,
+            cancellationReasons = cancellationReasons,
+            loyaltyMix = loyaltyMix,
+            monthlyRevenue = monthlyRevenue,
         )
+    }
+
+    fun resolveModificationRequest(authorizationHeader: String?, requestId: Int, requestBody: String): BookingService.Booking {
+        requireAdmin(authorizationHeader)
+        val request = json.decodeFromString<ModificationDecisionRequest>(requestBody)
+        val decision = request.decision.trim().lowercase()
+        if (decision != "approved" && decision != "rejected") {
+            throw IllegalArgumentException("Decision must be either approved or rejected")
+        }
+
+        val bookingId = transaction {
+            val requestRow = ModificationRequestsTable.selectAll()
+                .firstOrNull { it[ModificationRequestsTable.id] == requestId }
+                ?: throw IllegalArgumentException("Modification request not found")
+
+            val currentStatus = requestRow[ModificationRequestsTable.status].lowercase()
+            if (currentStatus != "pending") {
+                throw IllegalArgumentException("Only pending requests can be updated")
+            }
+
+            val existingDescription = requestRow[ModificationRequestsTable.description].orEmpty().trim()
+            val adminNote = request.note.trim()
+            val resolvedDescription = buildString {
+                if (existingDescription.isNotBlank()) {
+                    append(existingDescription)
+                }
+                if (adminNote.isNotBlank()) {
+                    if (isNotEmpty()) append("\n\n")
+                    append("Admin note: ")
+                    append(adminNote)
+                }
+            }.ifBlank { null }
+
+            ModificationRequestsTable.update({ ModificationRequestsTable.id eq requestId }) { row ->
+                row[status] = decision
+                row[description] = resolvedDescription
+            }
+
+            requestRow[ModificationRequestsTable.bookingId]
+        }
+
+        return BookingService.getAllBookingsForAdmin()
+            .firstOrNull { it.id == bookingId }
+            ?: throw IllegalStateException("Updated booking could not be loaded")
     }
 
     private fun createAdminToken(username: String): String {

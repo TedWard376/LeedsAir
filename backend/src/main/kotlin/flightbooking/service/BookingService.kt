@@ -81,6 +81,16 @@ object BookingService {
         val modificationRequestedAt: String? = null,
         val cancellationReason: String? = null,
         val cancelledAt: String? = null,
+        val requestHistory: List<BookingRequestHistoryItem> = emptyList(),
+    )
+
+    @Serializable
+    data class BookingRequestHistoryItem(
+        val id: Int,
+        val requestType: String,
+        val status: String,
+        val description: String? = null,
+        val createdAt: String,
     )
 
     @OptIn(ExperimentalSerializationApi::class)
@@ -251,6 +261,7 @@ object BookingService {
             bookingId = bookingId,
             requestType = "cancellation",
             description = cancellationReason ?: "Cancelled by customer from manage booking.",
+            status = "completed",
         )
 
         hydrateBookingById(bookingId) ?: throw IllegalStateException("Cancelled booking could not be loaded")
@@ -310,6 +321,7 @@ object BookingService {
             bookingId = bookingId,
             requestType = request.requestType?.trim().takeUnless { it.isNullOrBlank() } ?: "general",
             description = request.description?.trim().takeUnless { it.isNullOrBlank() },
+            status = "pending",
         )
 
         hydrateBookingById(bookingId) ?: throw IllegalStateException("Modified booking could not be loaded")
@@ -330,12 +342,13 @@ object BookingService {
         bookingId: Int,
         requestType: String,
         description: String?,
+        status: String,
     ) {
         ModificationRequestsTable.insert { row ->
             row[ModificationRequestsTable.bookingId] = bookingId
             row[ModificationRequestsTable.requestType] = requestType
             row[ModificationRequestsTable.description] = description
-            row[status] = "processed"
+            row[ModificationRequestsTable.status] = status
             row[createdAt] = LocalDateTime.now()
             row[processedBy] = null
         }
@@ -470,15 +483,13 @@ object BookingService {
             ?.get(BookingFlightsTable.flightId)
 
         val flight = flightId?.let { loadFlightSummary(it) }
-        val latestModification = ModificationRequestsTable.selectAll()
+        val modificationHistory = ModificationRequestsTable.selectAll()
             .filter { it[ModificationRequestsTable.bookingId] == bookingId }
-            .maxByOrNull { it[ModificationRequestsTable.createdAt] }
-        val cancellationModification = ModificationRequestsTable.selectAll()
-            .filter {
-                it[ModificationRequestsTable.bookingId] == bookingId &&
-                    it[ModificationRequestsTable.requestType].equals("cancellation", ignoreCase = true)
-            }
-            .maxByOrNull { it[ModificationRequestsTable.createdAt] }
+            .sortedByDescending { it[ModificationRequestsTable.createdAt] }
+        val latestModification = modificationHistory.firstOrNull()
+        val cancellationModification = modificationHistory.firstOrNull {
+            it[ModificationRequestsTable.requestType].equals("cancellation", ignoreCase = true)
+        }
 
         return Booking(
             id = bookingId,
@@ -499,6 +510,15 @@ object BookingService {
             modificationRequestedAt = latestModification?.get(ModificationRequestsTable.createdAt)?.toString(),
             cancellationReason = cancellationModification?.get(ModificationRequestsTable.description),
             cancelledAt = cancellationModification?.get(ModificationRequestsTable.createdAt)?.toString(),
+            requestHistory = modificationHistory.map { row ->
+                BookingRequestHistoryItem(
+                    id = row[ModificationRequestsTable.id],
+                    requestType = row[ModificationRequestsTable.requestType],
+                    status = row[ModificationRequestsTable.status],
+                    description = row[ModificationRequestsTable.description],
+                    createdAt = row[ModificationRequestsTable.createdAt].toString(),
+                )
+            },
         )
     }
 
