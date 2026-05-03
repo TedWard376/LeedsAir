@@ -249,7 +249,10 @@ fun Application.configureRouting() {
             }
 
             try {
-                call.respond(BookingService.cancelBooking(bookingId))
+                val requestBody = call.receiveText().trim()
+                call.respond(BookingService.cancelBooking(bookingId, requestBody.ifBlank { null }))
+            } catch (_: SerializationException) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid cancellation payload"))
             } catch (e: IllegalArgumentException) {
                 val status = if (e.message == "Booking not found") HttpStatusCode.NotFound else HttpStatusCode.BadRequest
                 call.respond(status, mapOf("error" to (e.message ?: "Unable to cancel booking")))

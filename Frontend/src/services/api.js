@@ -61,8 +61,11 @@ export async function modifyBooking(id, data) {
   return request(`/bookings/${id}`, { method: "PUT", body: JSON.stringify(data) });
 }
 
-export async function cancelBooking(id) {
-  return request(`/bookings/${id}/cancel`, { method: "POST" });
+export async function cancelBooking(id, data = null) {
+  return request(`/bookings/${id}/cancel`, {
+    method: "POST",
+    body: JSON.stringify(data ?? {}),
+  });
 }
 
 export async function checkIn(id) {

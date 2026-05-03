@@ -79,6 +79,8 @@ object BookingService {
         val departureDate: String? = flight?.departureDate,
         val modificationRequested: String? = null,
         val modificationRequestedAt: String? = null,
+        val cancellationReason: String? = null,
+        val cancelledAt: String? = null,
     )
 
     @OptIn(ExperimentalSerializationApi::class)
@@ -116,6 +118,13 @@ object BookingService {
         val status: String? = null,
         val description: String? = null,
         val requestType: String? = null,
+    )
+
+    @OptIn(ExperimentalSerializationApi::class)
+    @Serializable
+    @JsonIgnoreUnknownKeys
+    data class BookingCancelRequest(
+        val reason: String = "",
     )
 
     @Serializable
@@ -219,9 +228,13 @@ object BookingService {
         hydrateBookingById(bookingId) ?: throw IllegalStateException("Booking was created but could not be loaded")
     }
 
-    fun cancelBooking(bookingId: Int): Booking = transaction {
+    fun cancelBooking(bookingId: Int, requestBody: String? = null): Booking = transaction {
         val bookingRow = loadBookingRowOrThrow(bookingId)
         val currentStatus = bookingRow[BookingsTable.status]
+        val cancelRequest = requestBody
+            ?.takeIf { it.isNotBlank() }
+            ?.let { json.decodeFromString<BookingCancelRequest>(it) }
+        val cancellationReason = cancelRequest?.reason?.trim().takeUnless { it.isNullOrBlank() }
 
         if (currentStatus == cancelledBookingStatus) {
             return@transaction hydrateBooking(bookingRow)
@@ -234,6 +247,11 @@ object BookingService {
 
         restoreSeatsForBooking(bookingId)
         updateBookingStatus(bookingId, cancelledBookingStatus)
+        recordModificationRequest(
+            bookingId = bookingId,
+            requestType = "cancellation",
+            description = cancellationReason ?: "Cancelled by customer from manage booking.",
+        )
 
         hydrateBookingById(bookingId) ?: throw IllegalStateException("Cancelled booking could not be loaded")
     }
@@ -288,14 +306,11 @@ object BookingService {
             updateBookingStatus(bookingId, normalizedStatus)
         }
 
-        ModificationRequestsTable.insert { row ->
-            row[ModificationRequestsTable.bookingId] = bookingId
-            row[requestType] = request.requestType?.trim().takeUnless { it.isNullOrBlank() } ?: "general"
-            row[description] = request.description?.trim().takeUnless { it.isNullOrBlank() }
-            row[status] = "processed"
-            row[createdAt] = LocalDateTime.now()
-            row[processedBy] = null
-        }
+        recordModificationRequest(
+            bookingId = bookingId,
+            requestType = request.requestType?.trim().takeUnless { it.isNullOrBlank() } ?: "general",
+            description = request.description?.trim().takeUnless { it.isNullOrBlank() },
+        )
 
         hydrateBookingById(bookingId) ?: throw IllegalStateException("Modified booking could not be loaded")
     }
@@ -308,6 +323,21 @@ object BookingService {
     private fun updateBookingStatus(bookingId: Int, status: String) {
         BookingsTable.update({ BookingsTable.id eq bookingId }) { row ->
             row[BookingsTable.status] = status
+        }
+    }
+
+    private fun recordModificationRequest(
+        bookingId: Int,
+        requestType: String,
+        description: String?,
+    ) {
+        ModificationRequestsTable.insert { row ->
+            row[ModificationRequestsTable.bookingId] = bookingId
+            row[ModificationRequestsTable.requestType] = requestType
+            row[ModificationRequestsTable.description] = description
+            row[status] = "processed"
+            row[createdAt] = LocalDateTime.now()
+            row[processedBy] = null
         }
     }
 
@@ -443,6 +473,12 @@ object BookingService {
         val latestModification = ModificationRequestsTable.selectAll()
             .filter { it[ModificationRequestsTable.bookingId] == bookingId }
             .maxByOrNull { it[ModificationRequestsTable.createdAt] }
+        val cancellationModification = ModificationRequestsTable.selectAll()
+            .filter {
+                it[ModificationRequestsTable.bookingId] == bookingId &&
+                    it[ModificationRequestsTable.requestType].equals("cancellation", ignoreCase = true)
+            }
+            .maxByOrNull { it[ModificationRequestsTable.createdAt] }
 
         return Booking(
             id = bookingId,
@@ -461,6 +497,8 @@ object BookingService {
             flight = flight,
             modificationRequested = latestModification?.get(ModificationRequestsTable.requestType)?.replaceFirstChar { it.uppercase() },
             modificationRequestedAt = latestModification?.get(ModificationRequestsTable.createdAt)?.toString(),
+            cancellationReason = cancellationModification?.get(ModificationRequestsTable.description),
+            cancelledAt = cancellationModification?.get(ModificationRequestsTable.createdAt)?.toString(),
         )
     }
 
