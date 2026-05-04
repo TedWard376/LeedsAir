@@ -1169,6 +1169,7 @@ body {
 .status-pending   { background: #fef9c3; color: #713f12; }
 .status-completed { background: #e0edff; color: var(--sky); }
 .status-checkedin { background: #e0f2fe; color: #075985; }
+.status-open      { background: #ffedd5; color: #9a3412; }
 
 .empty-state {
   text-align: center;
