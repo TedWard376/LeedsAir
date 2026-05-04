@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { useBookings } from "../hooks/useBookings";
 import { useAuth } from "../context/AuthContext";
 import { LoadingSpinner, ErrorMessage } from "../components/StatusMessages";
+import { RouteMap } from "../components/RouteMap";
 
 function parseDepartureDate(booking) {
   const dateValue = booking.flight?.departureDate || booking.departureDate;
@@ -27,7 +28,7 @@ function getTripGroup(booking) {
   return "Past Trips";
 }
 
-function BookingCard({ booking, onNavigate }) {
+function BookingCard({ booking, onManageBooking, onRebookRoute, onViewCheckIn }) {
   const statusClass = `status-badge status-${booking.status?.toLowerCase() || "confirmed"}`;
   const latestRequest = booking.requestHistory?.[0];
   const departureDate = booking.flight?.departureDate || booking.departureDate || "TBC";
@@ -52,6 +53,16 @@ function BookingCard({ booking, onNavigate }) {
         </div>
         <div className="booking-card-price">£{(booking.totalPrice ?? 0).toLocaleString()}</div>
       </div>
+
+      <RouteMap
+        from={routeFrom}
+        to={routeTo}
+        stops={booking.flight?.stops ?? 0}
+        departureTime={departureTime}
+        arrivalTime={booking.flight?.arrivalTime}
+        flightNumber={booking.flight?.flightNumber || booking.flightNumber}
+        caption="Route overview"
+      />
 
       <div className="booking-card-grid">
         <div>
@@ -83,14 +94,14 @@ function BookingCard({ booking, onNavigate }) {
       )}
 
       <div className="booking-card-actions">
-        <button className="quick-action-btn" onClick={() => onNavigate("manage-booking")}>
+        <button className="quick-action-btn" onClick={() => onManageBooking(booking)}>
           Manage booking
         </button>
-        <button className="quick-action-btn" onClick={() => onNavigate("booking")}>
+        <button className="quick-action-btn" onClick={() => onRebookRoute(booking)}>
           Rebook route
         </button>
         {booking.checkedIn && (
-          <button className="quick-action-btn" onClick={() => onNavigate("checkin")}>
+          <button className="quick-action-btn" onClick={() => onViewCheckIn(booking)}>
             View check-in
           </button>
         )}
@@ -99,7 +110,7 @@ function BookingCard({ booking, onNavigate }) {
   );
 }
 
-export function BookingsPage({ onNavigate }) {
+export function BookingsPage({ onNavigate, onManageBooking, onRebookRoute, onViewCheckIn }) {
   const { user, authLoading } = useAuth();
   const { bookings, loading, error } = useBookings(user?.id);
 
@@ -191,7 +202,9 @@ export function BookingsPage({ onNavigate }) {
                     <BookingCard
                       key={booking.id || booking.bookingReference}
                       booking={booking}
-                      onNavigate={onNavigate}
+                      onManageBooking={onManageBooking}
+                      onRebookRoute={onRebookRoute}
+                      onViewCheckIn={onViewCheckIn}
                     />
                   ))}
                 </div>

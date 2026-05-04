@@ -24,6 +24,8 @@ function AppInner() {
   const [searchParams,     setSearchParams]     = useState(null);
   const [selectedFlight,   setSelectedFlight]   = useState(null);
   const [confirmedBooking, setConfirmedBooking] = useState(null);
+  const [manageBookingPreset, setManageBookingPreset] = useState(null);
+  const [checkInPreset, setCheckInPreset] = useState(null);
 
   function handleSearch(params) {
     setSearchParams(params);
@@ -41,6 +43,36 @@ function AppInner() {
     setSelectedFlight(null);
     setSearchParams(null);
     setPage("home");
+  }
+
+  function handleManageBookingFromList(booking) {
+    setManageBookingPreset({
+      ref: booking.bookingReference || String(booking.id),
+      lastName: booking.passenger?.lastName || "",
+    });
+    setPage("manage");
+  }
+
+  function handleCheckInFromList(booking) {
+    setCheckInPreset({
+      ref: booking.bookingReference || String(booking.id),
+      lastName: booking.passenger?.lastName || "",
+    });
+    setPage("checkin");
+  }
+
+  function handleRebookRoute(booking) {
+    setSearchParams({
+      tripType: "one-way",
+      from: booking.flight?.from || booking.from || "LBA",
+      to: booking.flight?.to || booking.to || "",
+      departureDate: "",
+      travelClass: (booking.travelClass || "economy").toLowerCase(),
+      adults: 1,
+      children: 0,
+      infants: 0,
+    });
+    setPage("results");
   }
 
   function renderPage() {
@@ -69,9 +101,29 @@ function AppInner() {
             onComplete={handleBookingComplete}
           />
         );
-      case "bookings":        return <BookingsPage onNavigate={setPage} />;
-      case "manage":          return <ManageBookingPage />;
-      case "checkin":         return <CheckInPage />;
+      case "bookings":
+        return (
+          <BookingsPage
+            onNavigate={setPage}
+            onManageBooking={handleManageBookingFromList}
+            onRebookRoute={handleRebookRoute}
+            onViewCheckIn={handleCheckInFromList}
+          />
+        );
+      case "manage":
+        return (
+          <ManageBookingPage
+            initialLookup={manageBookingPreset}
+            onLookupConsumed={() => setManageBookingPreset(null)}
+          />
+        );
+      case "checkin":
+        return (
+          <CheckInPage
+            initialLookup={checkInPreset}
+            onLookupConsumed={() => setCheckInPreset(null)}
+          />
+        );
       case "login":           return <LoginPage onNavigate={setPage} />;
       case "register":        return <RegisterPage onNavigate={setPage} />;
       case "account":         return <AccountPage onNavigate={setPage} />;
