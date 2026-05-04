@@ -456,7 +456,7 @@ object BookingService {
         }
     }
 
-    private fun detectCardBrand(cardNumber: String): String = when {
+    internal fun detectCardBrand(cardNumber: String): String = when {
         cardNumber.startsWith("4") -> "Visa"
         cardNumber.startsWith("5") -> "Mastercard"
         cardNumber.startsWith("34") || cardNumber.startsWith("37") -> "American Express"
@@ -523,7 +523,7 @@ object BookingService {
         )
     }
 
-    private fun displayStatus(status: String): String = when (status.lowercase()) {
+    internal fun displayStatus(status: String): String = when (status.lowercase()) {
         checkedInBookingStatus -> "CheckedIn"
         cancelledBookingStatus -> "Cancelled"
         defaultBookingStatus -> "Confirmed"
