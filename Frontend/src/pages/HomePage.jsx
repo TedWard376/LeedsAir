@@ -31,7 +31,7 @@ const AIRPORTS = {
 const DEFAULT_CODES = ["AMS", "BCN", "CDG", "DUB", "MAD", "FCO"];
 
 function destCode(routeStr) {
-  const parts = routeStr.split(/â†’|->/).map((value) => value.trim());
+  const parts = routeStr.split(/→|->/).map((value) => value.trim());
   return parts[1] || null;
 }
 
@@ -175,7 +175,7 @@ export function HomePage({ onSearch, confirmedBooking, onDismissConfirmation }) 
                 <span className="dest-code">{destination.code}</span>
               </div>
               <span className="dest-price">
-                {destination.price ? `from Â£${destination.price}` : "View flights"}
+                {destination.price ? `from £${destination.price}` : "View flights"}
               </span>
               {destination.bookingCount ? (
                 <span className="dest-meta">{destination.bookingCount} recent bookings</span>
@@ -194,7 +194,7 @@ export function HomePage({ onSearch, confirmedBooking, onDismissConfirmation }) 
       <div className="home-discovery-grid">
         <div className="discovery-panel discovery-panel--value">
           <span className="booking-card-eyebrow">Best value this week</span>
-          <h3>{bestValueDestination ? `${bestValueDestination.city} from Â£${bestValueDestination.price}` : "Affordable short-haul favourites"}</h3>
+          <h3>{bestValueDestination ? `${bestValueDestination.city} from £${bestValueDestination.price}` : "Affordable short-haul favourites"}</h3>
           <p>
             {bestValueDestination
               ? `Our lowest currently surfaced fare is for ${bestValueDestination.city}, making it a strong pick for a low-cost getaway.`
@@ -246,13 +246,13 @@ export function HomePage({ onSearch, confirmedBooking, onDismissConfirmation }) 
 
       {confirmedBooking && (
         <div className="confirmation-banner" style={{ maxWidth: 900, margin: "2rem auto", marginLeft: "1.5rem", marginRight: "1.5rem" }}>
-          <span className="confirm-icon">âœ“</span>
+          <span className="confirm-icon">✓</span>
           <div>
             <strong>Booking confirmed!</strong>
             <p>Reference: <code>{confirmedBooking.bookingReference || confirmedBooking.id}</code></p>
             <p>Confirmation email sent to {confirmedBooking.passenger?.email}.</p>
           </div>
-          <button className="dismiss-btn" onClick={onDismissConfirmation}>Ã—</button>
+          <button className="dismiss-btn" onClick={onDismissConfirmation}>×</button>
         </div>
       )}
     </div>
