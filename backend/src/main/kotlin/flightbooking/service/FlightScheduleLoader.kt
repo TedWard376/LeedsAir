@@ -18,11 +18,10 @@ data class FlightScheduleRow(
     val duration: String,
     val stops: Int,
     val price: String,
-    val availableSeats: Int?
+    val availableSeats: Int?,
 )
 
 object FlightScheduleLoader {
-
     private const val CSV_PATH = "data/FlightSchedule.csv"
 
     fun loadFromCsv(): List<FlightScheduleRow> {
@@ -56,7 +55,7 @@ object FlightScheduleLoader {
                             duration = duration,
                             stops = stops,
                             price = price,
-                            availableSeats = availableSeats
+                            availableSeats = availableSeats,
                         )
                     }
                 }.toList()
@@ -67,9 +66,12 @@ object FlightScheduleLoader {
     private fun openCsvStream(): InputStream {
         return javaClass.classLoader.getResourceAsStream(CSV_PATH)
             ?: javaClass.classLoader.getResourceAsStream("FlightSchedule.csv")
-            ?: if (File(CSV_PATH).exists()) FileInputStream(File(CSV_PATH))
-            else if (File("FlightSchedule.csv").exists()) FileInputStream(File("FlightSchedule.csv"))
-            else throw IllegalStateException("FlightSchedule.csv not found in classpath or filesystem")
+            ?: if (File(CSV_PATH).exists()) {
+                FileInputStream(File(CSV_PATH))
+            } else if (File("FlightSchedule.csv").exists()) {
+                FileInputStream(File("FlightSchedule.csv"))
+            } else {
+                throw IllegalStateException("FlightSchedule.csv not found in classpath or filesystem")
+            }
     }
 }
-

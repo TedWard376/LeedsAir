@@ -1,9 +1,9 @@
 package flightbooking.service
 
-import io.ktor.client.*
+import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
-import io.ktor.client.request.*
-import io.ktor.client.statement.*
+import io.ktor.client.request.get
+import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
@@ -12,7 +12,7 @@ import kotlinx.serialization.json.JsonIgnoreUnknownKeys
 
 val client = HttpClient(CIO)
 
-//Define data structure for IpWhoIs API
+// Define data structure for IpWhoIs API
 @OptIn(ExperimentalSerializationApi::class)
 @Serializable
 @JsonIgnoreUnknownKeys
@@ -21,7 +21,7 @@ data class IpWhoIsResponse(
     val city: String,
     val country: String,
     val latitude: Double,
-    val longitude: Double
+    val longitude: Double,
 )
 
 data class Airport(
@@ -32,14 +32,14 @@ data class Airport(
     val iso_country: String,
     val municipality: String,
     val icao_code: String,
-    val iata_code: String
+    val iata_code: String,
 )
 
 val Airports: List<Airport> by lazy { AirportLoader.loadFromCsv() }
 
-suspend fun getUserCoordinate(userIP : String) : Pair<Double, Double>{ //Returns user coordinate depends on user IP
+suspend fun getUserCoordinate(userIP: String): Pair<Double, Double> { // Returns user coordinate depends on user IP
     val response = client.get("https://ipwho.is/$userIP")
-    if(response.status == HttpStatusCode(200, "OK")) {
+    if (response.status == HttpStatusCode(200, "OK")) {
         val responseJSON = Json.decodeFromString<IpWhoIsResponse>(response.bodyAsText())
         return Pair(responseJSON.latitude, responseJSON.longitude)
     } else {
@@ -47,19 +47,22 @@ suspend fun getUserCoordinate(userIP : String) : Pair<Double, Double>{ //Returns
     }
 }
 
-fun calculateDistance(userCoordinate: Pair<Double, Double>, airportCoordinate: Pair<Double, Double>) : Double { //Calculate distance between user and airport
+fun calculateDistance(
+    userCoordinate: Pair<Double, Double>,
+    airportCoordinate: Pair<Double, Double>,
+): Double { // Calculate distance between user and airport
     val dx = userCoordinate.first - airportCoordinate.first
     val dy = userCoordinate.second - airportCoordinate.second
     return dx * dx + dy * dy
 }
 
-suspend fun getNearestAirport(userIP : String) : Airport{ //Returns nearest airport from user
+suspend fun getNearestAirport(userIP: String): Airport { // Returns nearest airport from user
     var nearestAirport = Airports[0]
     val userCoordinate = getUserCoordinate(userIP)
     var nearestAirportDistance = calculateDistance(userCoordinate, Pair(nearestAirport.latitude_deg, nearestAirport.longitude_deg))
-    for(airport in Airports) {
+    for (airport in Airports) {
         val airportDistance = calculateDistance(userCoordinate, Pair(airport.latitude_deg, airport.longitude_deg))
-        if(airportDistance < nearestAirportDistance) {
+        if (airportDistance < nearestAirportDistance) {
             nearestAirportDistance = airportDistance
             nearestAirport = airport
         }

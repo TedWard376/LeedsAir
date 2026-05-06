@@ -89,6 +89,9 @@ Current backend tests cover:
 
 - CSV flight schedule loading
 - admin login token generation and validation
+- a small set of routing and auth rejection cases
+
+Dedicated security testing notes and follow-up checklist live in [SECURITY_TESTING.md](SECURITY_TESTING.md).
 
 ## Data And Database
 

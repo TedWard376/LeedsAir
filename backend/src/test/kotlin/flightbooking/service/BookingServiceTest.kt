@@ -4,7 +4,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class BookingServiceTest {
-
     @Test
     fun `detectCardBrand identifies the major card families used in checkout`() {
         assertEquals("Visa", BookingService.detectCardBrand("4111 1111 1111 1111"))

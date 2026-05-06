@@ -33,8 +33,6 @@ export function AccountPage({ onNavigate }) {
   }
 
   const upcoming = bookings.filter((b) => b.status !== "Cancelled");
-  const past = bookings.filter((b) => b.status === "Completed" || b.status === "Cancelled");
-
   return (
     <div className="page account-page">
       <div className="page-header">

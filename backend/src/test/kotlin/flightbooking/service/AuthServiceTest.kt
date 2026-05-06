@@ -7,11 +7,11 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 class AuthServiceTest {
-
     @Test
     fun `resolveUserIdFromAuthorization extracts user id from a valid bearer token`() {
-        val token = Base64.getUrlEncoder().withoutPadding()
-            .encodeToString("leedsair:42:test@example.com".toByteArray(StandardCharsets.UTF_8))
+        val token =
+            Base64.getUrlEncoder().withoutPadding()
+                .encodeToString("leedsair:42:test@example.com".toByteArray(StandardCharsets.UTF_8))
 
         val userId = AuthService.resolveUserIdFromAuthorization("Bearer $token")
 
