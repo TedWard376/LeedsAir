@@ -216,6 +216,24 @@ const EXTRAS_LIST = [
   { id: "insurance", label: "Travel insurance",     price: 18, icon: "🛡"  },
 ];
 
+const EXTRA_DETAILS = {
+  bag20: ["Adds one extra checked bag", "Useful for short trips or extra shopping"],
+  bag32: ["Higher baggage allowance", "Ideal for longer trips or family travel"],
+  priority: ["Board earlier than standard groups", "Helps secure cabin bag space sooner"],
+  legroom: ["More space around your seat", "Good choice for longer flights"],
+  insurance: ["Cover for cancellation and delays", "Includes lost baggage protection"],
+};
+
+function ExtrasInfoList() {
+  return (
+    <ul className="extras-info-list">
+      <li>Extras are optional and apply to the full booking unless stated otherwise.</li>
+      <li>Any selected extras are included in your final total before payment.</li>
+      <li>Travel insurance includes a policy link so you can review the cover before selecting it.</li>
+    </ul>
+  );
+}
+
 function AuthPanel({ onAuthComplete }) {
   const { loginUser } = useAuth();
   const [mode,      setMode]      = useState("login");
@@ -665,6 +683,7 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
       <div className="booking-flow-body"><div className="flow-step-body">
         <h2 className="flow-step-title">Add Extras</h2>
         <p className="flow-subtitle">Enhance your journey. Extras apply to the whole booking.</p>
+        <ExtrasInfoList />
         <div className="extras-grid">
           {EXTRAS_LIST.map(extra => {
             const checked = extras.includes(extra.id);
@@ -674,6 +693,13 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
                 <div className="extra-info">
                   <span className="extra-label">{extra.label}</span>
                   <span className="extra-price">+£{extra.price}</span>
+                  {EXTRA_DETAILS[extra.id]?.length > 0 && (
+                    <ul className="extra-points-list">
+                      {EXTRA_DETAILS[extra.id].map((point) => (
+                        <li key={point}>{point}</li>
+                      ))}
+                    </ul>
+                  )}
                   {extra.id === "insurance" && (
                     <small>
                       Covers cancellation, delays and lost baggage.{" "}
@@ -771,6 +797,7 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
           {extras.length > 0 && (
             <div className="review-section">
               <h3>Extras</h3>
+              <ExtrasInfoList />
               {extras.map(id => { const ex=EXTRAS_LIST.find(e=>e.id===id); return ex?<div key={id} className="review-row"><span>{ex.label}</span><span>+£{ex.price}</span></div>:null; })}
             </div>
           )}
