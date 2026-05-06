@@ -328,19 +328,77 @@ object BookingService {
             updateBookingStatus(bookingId, normalizedStatus)
         }
 
+        val requestType = request.requestType?.trim().takeUnless { it.isNullOrBlank() } ?: "general"
+        val requestStatus = if (requestType.equals("extra_request", ignoreCase = true)) "completed" else "pending"
+
         recordModificationRequest(
             bookingId = bookingId,
-            requestType = request.requestType?.trim().takeUnless { it.isNullOrBlank() } ?: "general",
+            requestType = requestType,
             description = request.description?.trim().takeUnless { it.isNullOrBlank() },
-            status = "pending",
+            status = requestStatus,
         )
 
         hydrateBookingById(bookingId) ?: throw IllegalStateException("Modified booking could not be loaded")
     }
 
+    fun applyApprovedRequest(bookingId: Int, requestType: String, description: String?) = transaction {
+        val normalizedType = requestType.trim().lowercase()
+        val normalizedDescription = description.orEmpty()
+        when (normalizedType) {
+            "name_change" -> applyApprovedNameChange(bookingId, normalizedDescription)
+            "date_change" -> applyApprovedDateChange(bookingId, normalizedDescription)
+        }
+    }
+
     private fun loadBookingRowOrThrow(bookingId: Int): ResultRow {
         return BookingsTable.selectAll().firstOrNull { it[BookingsTable.id] == bookingId }
             ?: throw IllegalArgumentException("Booking not found")
+    }
+
+    private fun applyApprovedNameChange(bookingId: Int, description: String) {
+        val newName = extractNameChangeValue(description) ?: return
+        val parts = newName.split(Regex("\\s+")).filter { it.isNotBlank() }
+        if (parts.isEmpty()) return
+
+        val first = parts.first()
+        val last = parts.drop(1).joinToString(" ").ifBlank { "Updated" }
+        val passengerRow = PassengersTable.selectAll().firstOrNull { it[PassengersTable.bookingId] == bookingId } ?: return
+        val passengerId = passengerRow[PassengersTable.id]
+
+        PassengersTable.update({ PassengersTable.id eq passengerId }) { row ->
+            row[firstName] = first
+            row[lastName] = last
+        }
+    }
+
+    private fun applyApprovedDateChange(bookingId: Int, description: String) {
+        val newFlightId = extractRequestedFlightId(description) ?: return
+        val existingLink = BookingFlightsTable.selectAll().firstOrNull { it[BookingFlightsTable.bookingId] == bookingId } ?: return
+        val currentFlightId = existingLink[BookingFlightsTable.flightId]
+        if (currentFlightId == newFlightId) return
+
+        val passengerCount = PassengersTable.selectAll().count { it[PassengersTable.bookingId] == bookingId }
+        if (passengerCount == 0) return
+
+        restoreSeatsForBooking(bookingId)
+        reserveSeats(newFlightId, passengerCount)
+        BookingFlightsTable.update({ BookingFlightsTable.bookingId eq bookingId }) { row ->
+            row[flightId] = newFlightId
+        }
+    }
+
+    private fun extractNameChangeValue(description: String): String? {
+        val match = Regex("""Requested passenger name change to:\s*(.+)""", RegexOption.IGNORE_CASE)
+            .find(description)
+            ?: return null
+        return match.groupValues.getOrNull(1)?.trim()?.takeIf { it.isNotBlank() }
+    }
+
+    private fun extractRequestedFlightId(description: String): Int? {
+        val match = Regex("""Requested flight id:\s*(\d+)""", RegexOption.IGNORE_CASE)
+            .find(description)
+            ?: return null
+        return match.groupValues.getOrNull(1)?.toIntOrNull()
     }
 
     private fun updateBookingStatus(bookingId: Int, status: String) {
