@@ -454,6 +454,16 @@ export function AdminDashboardPage({ onNavigate }) {
 
         {!loading && !error && tab === "modifications" && (
           <div className="modifications-section">
+            <div style={{ marginBottom: "2rem" }}>
+              <h3 style={{ marginBottom: "1rem" }}>Change Tracking Summary</h3>
+              <div className="admin-metrics">
+                <MetricCard icon="Changes" value={modifications.length} label="Pending Changes" />
+                <MetricCard icon="Cancel" value={bookings.filter((booking) => booking.status === "Cancelled").length} label="Cancellations" />
+                <MetricCard icon="Boarded" value={bookings.filter((booking) => booking.checkedIn).length} label="Checked In" />
+                <MetricCard icon="Confirmed" value={bookings.filter((booking) => booking.status === "Confirmed").length} label="Confirmed" />
+              </div>
+            </div>
+
             <h2>Modification Requests</h2>
             <p className="section-subtitle">
               Bookings with pending change requests or awaiting admin approval.
@@ -520,16 +530,6 @@ export function AdminDashboardPage({ onNavigate }) {
                 ))}
               </div>
             )}
-
-            <div style={{ marginTop: "2rem" }}>
-              <h3 style={{ marginBottom: "1rem" }}>Change Tracking Summary</h3>
-              <div className="admin-metrics">
-                <MetricCard icon="Changes" value={modifications.length} label="Pending Changes" />
-                <MetricCard icon="Cancel" value={bookings.filter((booking) => booking.status === "Cancelled").length} label="Cancellations" />
-                <MetricCard icon="Boarded" value={bookings.filter((booking) => booking.checkedIn).length} label="Checked In" />
-                <MetricCard icon="Confirmed" value={bookings.filter((booking) => booking.status === "Confirmed").length} label="Confirmed" />
-              </div>
-            </div>
           </div>
         )}
       </div>
