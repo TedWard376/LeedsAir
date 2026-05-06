@@ -86,7 +86,7 @@ export function RewardsPage({ onNavigate }) {
   const lifetimePoints = loyalty?.lifetimePoints ?? 0;
   const tier = loyalty?.tier ?? (points >= 5000 ? "Gold" : points >= 2000 ? "Silver" : "Bronze");
   const tierMeta = TIER_THRESHOLDS.find((entry) => entry.name === tier) || TIER_THRESHOLDS[0];
-  const rewards = loyalty?.rewards ?? [];
+  const rewards = useMemo(() => loyalty?.rewards ?? [], [loyalty]);
   const benefits = loyalty?.benefits ?? [];
 
   const nextAffordableReward = useMemo(() => {

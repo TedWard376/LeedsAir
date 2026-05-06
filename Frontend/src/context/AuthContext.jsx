@@ -5,12 +5,12 @@ const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
-  const [authLoading, setAuthLoading] = useState(true);
+  const [authLoading, setAuthLoading] = useState(() => Boolean(localStorage.getItem("token")));
 
   // On mount, try to restore session from stored token
   useEffect(() => {
     const token = localStorage.getItem("token");
-    if (!token) { setAuthLoading(false); return; }
+    if (!token) return;
 
     getProfile()
       .then((profile) => setUser(profile))
