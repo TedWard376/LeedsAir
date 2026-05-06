@@ -14,6 +14,12 @@ const EXTRA_OPTIONS = [
   { id: "lounge-access", label: "Lounge access", price: 35 },
   { id: "travel-insurance", label: "Travel insurance", price: 27 },
 ];
+const EXTRA_OPTION_DETAILS = {
+  "priority-boarding": ["Board earlier than standard groups", "Better chance of nearby overhead space"],
+  "extra-baggage": ["Adds one extra 20kg checked bag", "Useful for shopping or longer stays"],
+  "lounge-access": ["Access before departure", "Quiet seating and refreshments included"],
+  "travel-insurance": ["Cover for cancellation and delays", "Includes lost baggage protection"],
+};
 const DATE_CHANGE_ADMIN_FEE = 10;
 const INSURANCE_PDF = "/LeedsAir-Travel-Insurance-Policy.pdf";
 const BASE_TAKEN = new Set([
@@ -561,6 +567,11 @@ export function ManageBookingPage({ initialLookup, onLookupConsumed }) {
             <div className="manage-action-panel">
               <h4>Add extras</h4>
               <p>Select extras to add immediately to this booking.</p>
+              <ul className="extras-info-list">
+                <li>Extras are optional and can be added before travel if still available.</li>
+                <li>Selected extras are shown with their price so you can review the cost first.</li>
+                <li>Travel insurance includes a policy link so you can check the cover before adding it.</li>
+              </ul>
               <div className="extras-grid">
                 {EXTRA_OPTIONS.map((extra) => {
                   const isSelected = selectedExtras.includes(extra.id);
@@ -577,6 +588,13 @@ export function ManageBookingPage({ initialLookup, onLookupConsumed }) {
                       <div className="extra-info">
                         <span className="extra-label">{extra.label}</span>
                         <span className="extra-price">£{extra.price}</span>
+                        {EXTRA_OPTION_DETAILS[extra.id]?.length > 0 && (
+                          <ul className="extra-points-list">
+                            {EXTRA_OPTION_DETAILS[extra.id].map((point) => (
+                              <li key={point}>{point}</li>
+                            ))}
+                          </ul>
+                        )}
                         {extra.id === "travel-insurance" && (
                           <small>
                             Covers cancellation, delays and lost baggage.{" "}
