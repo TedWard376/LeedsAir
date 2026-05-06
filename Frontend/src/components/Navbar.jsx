@@ -1,7 +1,7 @@
 import { useAuth } from "../context/AuthContext";
 
 export function Navbar({ activePage, onNavigate }) {
-  const { user, logoutUser } = useAuth();
+  const { user, authLoading, logoutUser } = useAuth();
 
   function handleLogout() {
     logoutUser();
@@ -63,7 +63,11 @@ export function Navbar({ activePage, onNavigate }) {
       </ul>
 
       <div className="navbar-auth">
-        {user ? (
+        {authLoading ? (
+          <div className="navbar-user">
+            <span className="nav-link">Restoring session...</span>
+          </div>
+        ) : user ? (
           <div className="navbar-user">
             <button
               className={activePage === "account" ? "nav-link active" : "nav-link"}

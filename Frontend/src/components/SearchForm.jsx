@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { buildApiUrl } from "../services/api";
 
 // ── Airport data ──────────────────────────────────────────
 const AIRPORTS = [
@@ -51,7 +52,7 @@ function useMonthPrices(from, to, year, month) {
 
     Promise.all(
       dates.map(date =>
-        fetch(`/api/flights?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&departureDate=${date}`)
+        fetch(buildApiUrl(`/flights?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&departureDate=${date}`))
           .then(r => r.ok ? r.json() : [])
           .then(flights => {
             if (flights && flights.length > 0) {
@@ -319,7 +320,7 @@ function CalendarPicker({ label, value, onChange, minDate, icon, from, to }) {
 }
 
 // ── PassengerCounter ──────────────────────────────────────
-function PassengerCounter({ label, subtitle, min, value, onChange }) {
+function PassengerCounter({ label, subtitle, min, max, value, onChange }) {
   return (
     <div className="pax-row">
       <div className="pax-label-wrap">
@@ -329,7 +330,7 @@ function PassengerCounter({ label, subtitle, min, value, onChange }) {
       <div className="pax-controls">
         <button type="button" className="pax-btn" onClick={() => onChange(Math.max(min, value - 1))} disabled={value <= min}>−</button>
         <span className="pax-num">{value}</span>
-        <button type="button" className="pax-btn" onClick={() => onChange(value + 1)}>+</button>
+        <button type="button" className="pax-btn" onClick={() => onChange(value + 1)} disabled={max !== undefined && value >= max}>+</button>
       </div>
     </div>
   );
@@ -398,11 +399,11 @@ export function SearchForm({ onSearch }) {
 
       <div className="pax-search-row">
         <div className="pax-wrap">
-          <label className="field-label">Passengers · <span style={{color:"var(--sky)",fontWeight:600}}>{total} selected</span></label>
+          <label className="field-label">Passengers · <span style={{color:"var(--sky)",fontWeight:600}}>{total} selected</span>{total >= 7 && <span style={{color:"#dc2626",fontSize:".75rem",marginLeft:".5rem"}}>Max 7</span>}</label>
           <div className="pax-grid">
-            <PassengerCounter label="Adults"   subtitle="16+"  min={1} value={adults}   onChange={setAdults} />
-            <PassengerCounter label="Children" subtitle="2–15" min={0} value={children} onChange={setChildren} />
-            <PassengerCounter label="Infants"  subtitle="<2"   min={0} value={infants}  onChange={setInfants} />
+            <PassengerCounter label="Adults"   subtitle="16+"  min={1} max={7 - children - infants} value={adults}   onChange={v => setAdults(Math.min(v, 7 - children - infants))} />
+            <PassengerCounter label="Children" subtitle="2–15" min={0} max={7 - adults - infants}   value={children} onChange={v => setChildren(Math.min(v, 7 - adults - infants))} />
+            <PassengerCounter label="Infants"  subtitle="<2"   min={0} max={7 - adults - children}  value={infants}  onChange={v => setInfants(Math.min(v, 7 - adults - children))} />
           </div>
         </div>
         <button type="submit" className="search-btn" disabled={!from || !to || !departureDate}>

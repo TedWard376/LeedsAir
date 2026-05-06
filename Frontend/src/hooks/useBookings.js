@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { getBookings, createBooking } from "../services/api";
 
-export function useBookings() {
+export function useBookings(userId = null) {
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -9,13 +9,20 @@ export function useBookings() {
   const [submitError, setSubmitError] = useState(null);
 
   useEffect(() => {
+    if (!userId) {
+      setBookings([]);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+
     let cancelled = false;
 
     async function fetchBookings() {
       setLoading(true);
       setError(null);
       try {
-        const data = await getBookings();
+        const data = await getBookings(userId);
         if (!cancelled) setBookings(data);
       } catch (err) {
         if (!cancelled) setError(err.message);
@@ -26,7 +33,7 @@ export function useBookings() {
 
     fetchBookings();
     return () => { cancelled = true; };
-  }, []);
+  }, [userId]);
 
   const submitBooking = useCallback(async (bookingData) => {
     setSubmitting(true);
