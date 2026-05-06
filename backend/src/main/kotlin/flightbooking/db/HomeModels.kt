@@ -19,7 +19,8 @@ data class DestinationDisplay(
     val city: String,
     val code: String,
     val price: Double,
-    val flag: String
+    val flag: String,
+    val bookingCount: Int? = null
 )
 
 @Serializable

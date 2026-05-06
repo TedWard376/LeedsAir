@@ -42,7 +42,7 @@ async function request(path, options = {}, authTokenKey = "token") {
     try {
       const err = await res.json();
       message = err.message || err.error || message;
-    } catch {}
+    } catch { }
     throw new Error(normalizeErrorMessage(message, path));
   }
   // 204 No Content
@@ -67,6 +67,17 @@ export async function getProfile() {
 export async function getFlights(params = {}) {
   const query = new URLSearchParams(params).toString();
   return request(`/flights${query ? `?${query}` : ""}`);
+}
+
+let cachedAirports = null;
+export async function getAirports() {
+  if (cachedAirports) return cachedAirports;
+  cachedAirports = await request("/airports");
+  return cachedAirports;
+}
+
+export async function getHomeData() {
+  return request("/home");
 }
 
 // ── Bookings ──────────────────────────────────────────────

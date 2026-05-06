@@ -2,6 +2,7 @@ package flightbooking
 
 import flightbooking.service.AuthService
 import flightbooking.service.AdminService
+import flightbooking.service.AirportService
 import flightbooking.service.BookingService
 import flightbooking.service.ComplaintService
 import flightbooking.service.FlightService
@@ -24,6 +25,10 @@ fun Application.configureRouting() {
         get("/api/home") {
             val userIp = call.request.local.remoteAddress
             call.respond(HomeService.getHomeData(userIp))
+        }
+
+        get("/api/airports") {
+            call.respond(AirportService.getAllAirports())
         }
 
         get("/api/flights") {

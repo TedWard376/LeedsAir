@@ -17,11 +17,13 @@ val client = HttpClient(CIO)
 @Serializable
 @JsonIgnoreUnknownKeys
 data class IpWhoIsResponse(
-    val ip: String,
-    val city: String,
-    val country: String,
-    val latitude: Double,
-    val longitude: Double
+    val ip: String? = null,
+    val city: String? = null,
+    val country: String? = null,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val success: Boolean = true,
+    val message: String? = null
 )
 
 data class Airport(
@@ -38,12 +40,29 @@ data class Airport(
 val Airports: List<Airport> by lazy { AirportLoader.loadFromCsv() }
 
 suspend fun getUserCoordinate(userIP : String) : Pair<Double, Double>{ //Returns user coordinate depends on user IP
-    val response = client.get("https://ipwho.is/$userIP")
-    if(response.status == HttpStatusCode(200, "OK")) {
-        val responseJSON = Json.decodeFromString<IpWhoIsResponse>(response.bodyAsText())
-        return Pair(responseJSON.latitude, responseJSON.longitude)
+    // For local testing, 127.0.0.1 or IPv6 localhost will fail IP geolocation.
+    // We mock the IP to a Leeds, UK IP (or directly return Leeds coordinates) so local development works.
+    val queryIP = if (userIP == "127.0.0.1" || userIP == "0:0:0:0:0:0:0:1" || userIP == "localhost") {
+        "82.46.254.1" // A sample IP in Leeds, UK
     } else {
-        return Pair(0.0, 0.0)
+        userIP
+    }
+    
+    return try {
+        val response = client.get("https://ipwho.is/$queryIP")
+        if (response.status == HttpStatusCode.OK) {
+            val responseJSON = Json.decodeFromString<IpWhoIsResponse>(response.bodyAsText())
+            if (responseJSON.success && responseJSON.latitude != null && responseJSON.longitude != null) {
+                Pair(responseJSON.latitude, responseJSON.longitude)
+            } else {
+                Pair(53.7997, -1.5492) // Fallback to Leeds coordinates
+            }
+        } else {
+            Pair(53.7997, -1.5492)
+        }
+    } catch (e: Exception) {
+        println("IP Geolocation failed: ${e.message}")
+        Pair(53.7997, -1.5492)
     }
 }
 
@@ -54,10 +73,16 @@ fun calculateDistance(userCoordinate: Pair<Double, Double>, airportCoordinate: P
 }
 
 suspend fun getNearestAirport(userIP : String) : Airport{ //Returns nearest airport from user
-    var nearestAirport = Airports[0]
+    val activeCodes = AirportService.getAllAirports().map { it.code }.toSet()
+    val activeAirportsList = Airports.filter { it.iata_code in activeCodes }
+    
+    // If no active airports (e.g. database empty), fallback to all
+    val searchableAirports = if (activeAirportsList.isNotEmpty()) activeAirportsList else Airports
+
+    var nearestAirport = searchableAirports[0]
     val userCoordinate = getUserCoordinate(userIP)
     var nearestAirportDistance = calculateDistance(userCoordinate, Pair(nearestAirport.latitude_deg, nearestAirport.longitude_deg))
-    for(airport in Airports) {
+    for(airport in searchableAirports) {
         val airportDistance = calculateDistance(userCoordinate, Pair(airport.latitude_deg, airport.longitude_deg))
         if(airportDistance < nearestAirportDistance) {
             nearestAirportDistance = airportDistance

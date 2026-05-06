@@ -1,38 +1,12 @@
 import { useState, useEffect, useMemo } from "react";
 import { SearchForm } from "../components/SearchForm";
-import { adminGetReports, getFlights } from "../services/api";
-
-const AIRPORTS = {
-  LBA: { city: "Leeds", flag: "GB" },
-  LHR: { city: "London", flag: "GB" },
-  LGW: { city: "London", flag: "GB" },
-  MAN: { city: "Manchester", flag: "GB" },
-  EDI: { city: "Edinburgh", flag: "GB" },
-  BHX: { city: "Birmingham", flag: "GB" },
-  BRS: { city: "Bristol", flag: "GB" },
-  NCL: { city: "Newcastle", flag: "GB" },
-  AMS: { city: "Amsterdam", flag: "NL" },
-  CDG: { city: "Paris", flag: "FR" },
-  BCN: { city: "Barcelona", flag: "ES" },
-  MAD: { city: "Madrid", flag: "ES" },
-  FCO: { city: "Rome", flag: "IT" },
-  MXP: { city: "Milan", flag: "IT" },
-  FRA: { city: "Frankfurt", flag: "DE" },
-  MUC: { city: "Munich", flag: "DE" },
-  DXB: { city: "Dubai", flag: "AE" },
-  JFK: { city: "New York", flag: "US" },
-  LAX: { city: "Los Angeles", flag: "US" },
-  DUB: { city: "Dublin", flag: "IE" },
-  CPH: { city: "Copenhagen", flag: "DK" },
-  LIS: { city: "Lisbon", flag: "PT" },
-  ATH: { city: "Athens", flag: "GR" },
-};
+import { getHomeData } from "../services/api";
 
 const FALLBACK = [
-  { code: "BCN", city: "Barcelona", flag: "ES", price: 89 },
-  { code: "AMS", city: "Amsterdam", flag: "NL", price: 65 },
-  { code: "DXB", city: "Dubai", flag: "AE", price: 299 },
-  { code: "CDG", city: "Paris", flag: "FR", price: 74 },
+  { code: "BCN", city: "Barcelona", flag: "🇪🇸", price: 89 },
+  { code: "AMS", city: "Amsterdam", flag: "🇳🇱", price: 65 },
+  { code: "DXB", city: "Dubai", flag: "🇦🇪", price: 299 },
+  { code: "CDG", city: "Paris", flag: "🇫🇷", price: 74 },
 ];
 
 const INSPIRATION_CARDS = [
@@ -66,51 +40,14 @@ export function HomePage({ onSearch, confirmedBooking, onDismissConfirmation }) 
   useEffect(() => {
     let cancelled = false;
 
-    async function loadPopular() {
+    async function loadDestinations() {
       try {
-        const reports = await adminGetReports();
-        const seenDestinations = new Set();
-        const topRoutes = (reports.popularRoutes || [])
-          .filter(({ route }) => {
-            const code = destCode(route);
-            if (!code || seenDestinations.has(code)) return false;
-            seenDestinations.add(code);
-            return true;
-          })
-          .slice(0, 4);
-
-        if (!topRoutes.length) {
-          if (!cancelled) setLoading(false);
-          return;
-        }
-
-        const cards = await Promise.all(
-          topRoutes.map(async ({ route, count }) => {
-            const code = destCode(route);
-            if (!code || !AIRPORTS[code]) return null;
-
-            let price = null;
-            try {
-              const flights = await getFlights({ to: code });
-              const prices = flights.map((flight) => flight.price).filter(Boolean);
-              if (prices.length) price = Math.min(...prices);
-            } catch {
-              price = null;
-            }
-
-            return {
-              code,
-              city: AIRPORTS[code].city,
-              flag: AIRPORTS[code].flag,
-              price,
-              bookingCount: count,
-            };
-          })
-        );
-
-        if (!cancelled) {
-          const valid = cards.filter(Boolean);
-          if (valid.length) setDestinations(valid);
+        const homeData = await getHomeData();
+        if (!cancelled && homeData && homeData.destinations) {
+          setDestinations(homeData.destinations.map(c => ({
+            ...c,
+            flag: "" // We no longer use flag emoji as per user request
+          })));
           setLoading(false);
         }
       } catch {
@@ -118,7 +55,7 @@ export function HomePage({ onSearch, confirmedBooking, onDismissConfirmation }) 
       }
     }
 
-    loadPopular();
+    loadDestinations();
     return () => { cancelled = true; };
   }, []);
 
@@ -162,7 +99,9 @@ export function HomePage({ onSearch, confirmedBooking, onDismissConfirmation }) 
               <span className="dest-price">
                 {destination.price ? `from £${destination.price}` : "View flights"}
               </span>
-              {destination.bookingCount ? (
+              {destination.reasonLabel ? (
+                <span className="dest-meta">{destination.reasonLabel}</span>
+              ) : destination.bookingCount ? (
                 <span className="dest-meta">{destination.bookingCount} recent bookings</span>
               ) : (
                 <span className="dest-meta">Inspiration pick</span>

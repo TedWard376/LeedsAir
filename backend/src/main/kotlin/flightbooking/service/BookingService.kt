@@ -179,8 +179,10 @@ object BookingService {
 
     fun newBooking(str: String): Booking = transaction {
         val request = json.decodeFromString<BookingCreateRequest>(str)
-        val flightId = request.flightId.trim().toIntOrNull()
-            ?: throw IllegalArgumentException("flightId must be a numeric flight id")
+        val flightIds = request.flightId.split(",")
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .map { it.toIntOrNull() ?: throw IllegalArgumentException("flightId must be a numeric flight id or comma-separated numeric ids") }
 
         val passengers = request.passengers.ifEmpty {
             listOfNotNull(request.passenger)
@@ -192,7 +194,7 @@ object BookingService {
             throw IllegalArgumentException("At least one passenger is required")
         }
 
-        reserveSeats(flightId = flightId, seatsRequested = passengers.size)
+        flightIds.forEach { reserveSeats(flightId = it, seatsRequested = passengers.size) }
 
         val resolvedUserId = ensureUserExists(request.userId ?: defaultUserId)
         val bookingReference = generateBookingReference()
@@ -215,9 +217,11 @@ object BookingService {
             }
         }
 
-        BookingFlightsTable.insert { row ->
-            row[BookingFlightsTable.bookingId] = bookingId
-            row[BookingFlightsTable.flightId] = flightId
+        flightIds.forEach { fId ->
+            BookingFlightsTable.insert { row ->
+                row[BookingFlightsTable.bookingId] = bookingId
+                row[BookingFlightsTable.flightId] = fId
+            }
         }
 
         saveDummyPayment(
@@ -356,19 +360,22 @@ object BookingService {
     }
 
     private fun restoreSeatsForBooking(bookingId: Int) {
-        val flightId = BookingFlightsTable.selectAll()
-            .firstOrNull { it[BookingFlightsTable.bookingId] == bookingId }
-            ?.get(BookingFlightsTable.flightId)
-            ?: return
+        val flightIds = BookingFlightsTable.selectAll()
+            .filter { it[BookingFlightsTable.bookingId] == bookingId }
+            .map { it[BookingFlightsTable.flightId] }
+
+        if (flightIds.isEmpty()) return
 
         val passengerCount = PassengersTable.selectAll().count { it[PassengersTable.bookingId] == bookingId }
-        val scheduledFlightRow = ScheduledFlightsTable.selectAll()
-            .firstOrNull { it[ScheduledFlightsTable.id] == flightId }
-            ?: return
+        val scheduledFlightRows = ScheduledFlightsTable.selectAll()
+            .filter { it[ScheduledFlightsTable.id] in flightIds }
 
-        val currentAvailableSeats = scheduledFlightRow[ScheduledFlightsTable.availableSeats] ?: return
-        ScheduledFlightsTable.update({ ScheduledFlightsTable.id eq flightId }) { row ->
-            row[availableSeats] = currentAvailableSeats + passengerCount
+        for (flightRow in scheduledFlightRows) {
+            val fId = flightRow[ScheduledFlightsTable.id]
+            val currentAvailableSeats = flightRow[ScheduledFlightsTable.availableSeats] ?: continue
+            ScheduledFlightsTable.update({ ScheduledFlightsTable.id eq fId }) { row ->
+                row[availableSeats] = currentAvailableSeats + passengerCount
+            }
         }
     }
 
@@ -479,11 +486,11 @@ object BookingService {
             ?.toPassenger()
             ?: Passenger()
 
-        val flightId = BookingFlightsTable.selectAll()
-            .firstOrNull { it[BookingFlightsTable.bookingId] == bookingId }
-            ?.get(BookingFlightsTable.flightId)
+        val flightIds = BookingFlightsTable.selectAll()
+            .filter { it[BookingFlightsTable.bookingId] == bookingId }
+            .map { it[BookingFlightsTable.flightId] }
 
-        val flight = flightId?.let { loadFlightSummary(it) }
+        val flight = if (flightIds.isNotEmpty()) loadFlightSummary(flightIds) else null
         val modificationHistory = ModificationRequestsTable.selectAll()
             .filter { it[ModificationRequestsTable.bookingId] == bookingId }
             .sortedByDescending { it[ModificationRequestsTable.createdAt] }
@@ -497,7 +504,7 @@ object BookingService {
             ref = bookingReference,
             bookingReference = bookingReference,
             userId = bookingRow[BookingsTable.userId],
-            flightId = flightId?.toString().orEmpty(),
+            flightId = flightIds.joinToString(","),
             travelClass = defaultTravelClass,
             seat = defaultSeatLabel,
             extras = emptyList(),
@@ -530,31 +537,48 @@ object BookingService {
         else -> status.replaceFirstChar { it.uppercase() }
     }
 
-    private fun loadFlightSummary(flightId: Int): BookingFlightSummary? {
-        val scheduledFlightRow = ScheduledFlightsTable.selectAll()
-            .firstOrNull { it[ScheduledFlightsTable.id] == flightId }
-            ?: return null
-        val scheduleRow = FlightSchedulesTable.selectAll()
-            .firstOrNull { it[FlightSchedulesTable.id] == scheduledFlightRow[ScheduledFlightsTable.scheduleId] }
-            ?: return null
-        val departureAirportId = scheduleRow[FlightSchedulesTable.departureAirportId]
-        val arrivalAirportId = scheduleRow[FlightSchedulesTable.arrivalAirportId]
+    private fun loadFlightSummary(flightIds: List<Int>): BookingFlightSummary? {
+        if (flightIds.isEmpty()) return null
+
+        val scheduledFlightsRows = ScheduledFlightsTable.selectAll()
+            .filter { it[ScheduledFlightsTable.id] in flightIds }
+            .sortedBy { it[ScheduledFlightsTable.departureTime] }
+        
+        if (scheduledFlightsRows.isEmpty()) return null
+
+        val scheduleRows = FlightSchedulesTable.selectAll()
+            .filter { row -> scheduledFlightsRows.any { it[ScheduledFlightsTable.scheduleId] == row[FlightSchedulesTable.id] } }
+            .associateBy { it[FlightSchedulesTable.id] }
+
         val airportsById = AirportsTable.selectAll().associateBy { it[AirportsTable.id] }
+
+        // Take departure from the first leg and arrival from the last leg
+        val firstLeg = scheduledFlightsRows.first()
+        val lastLeg = scheduledFlightsRows.last()
+
+        val firstSchedule = scheduleRows[firstLeg[ScheduledFlightsTable.scheduleId]] ?: return null
+        val lastSchedule = scheduleRows[lastLeg[ScheduledFlightsTable.scheduleId]] ?: return null
+
+        val departureAirportId = firstSchedule[FlightSchedulesTable.departureAirportId]
+        val arrivalAirportId = lastSchedule[FlightSchedulesTable.arrivalAirportId]
 
         val departureAirport = airportsById[departureAirportId]
         val arrivalAirport = airportsById[arrivalAirportId]
-        val departureDateTime = scheduledFlightRow[ScheduledFlightsTable.departureTime]
-        val arrivalDateTime = scheduledFlightRow[ScheduledFlightsTable.arrivalTime]
+        val departureDateTime = firstLeg[ScheduledFlightsTable.departureTime]
+        val arrivalDateTime = lastLeg[ScheduledFlightsTable.arrivalTime]
+
+        val isConnecting = flightIds.size > 1
+        val flightNumber = if (isConnecting) "Multiple" else firstSchedule[FlightSchedulesTable.flightNumber]
 
         return BookingFlightSummary(
-            id = flightId,
-            flightNumber = scheduleRow[FlightSchedulesTable.flightNumber],
+            id = firstLeg[ScheduledFlightsTable.id],
+            flightNumber = flightNumber,
             from = departureAirport?.get(AirportsTable.code),
             to = arrivalAirport?.get(AirportsTable.code),
             departureTime = departureDateTime.toLocalTime().toString(),
             arrivalTime = arrivalDateTime.toLocalTime().toString(),
             departureDate = departureDateTime.toLocalDate().toString(),
-            stops = scheduleRow[FlightSchedulesTable.stops],
+            stops = if (isConnecting) flightIds.size - 1 else firstSchedule[FlightSchedulesTable.stops],
         )
     }
 
