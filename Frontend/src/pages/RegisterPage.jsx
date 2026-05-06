@@ -28,7 +28,8 @@ export function RegisterPage({ onNavigate }) {
     setLoading(true);
     setError(null);
     try {
-      const { confirmPassword, ...payload } = form;
+      const payload = { ...form };
+      delete payload.confirmPassword;
       const data = await register(payload);
       loginUser(data.token, data.user);
       onNavigate("home");

@@ -193,14 +193,14 @@ function SeatMap({ selected, onSelect, travelClass, chosenByOthers = [] }) {
         {ROWS_BIZ.map(row => (
           <div key={row} className="seat-row">
             <span className="seat-row-num">{row}</span>
-            {COLS.map((col, ci) => renderSeat(row, col))}
+            {COLS.map((col) => renderSeat(row, col))}
           </div>
         ))}
         <div className="cabin-divider"><span>Economy Class {isBizBooking && "— Business ticket only"}</span></div>
         {ROWS_ECO.map(row => (
           <div key={row} className="seat-row">
             <span className="seat-row-num">{row}</span>
-            {COLS.map((col, ci) => renderSeat(row, col))}
+            {COLS.map((col) => renderSeat(row, col))}
           </div>
         ))}
       </div>
@@ -329,6 +329,24 @@ function paxLabel(pax, idx) {
 export function BookingFlowPage({ flight, onNavigate, onComplete }) {
   const { user } = useAuth();
   const [step, setStep] = useState(0);
+  const hasFlight = Boolean(flight);
+  const [passengers, setPassengers] = useState(() => buildPassengers(flight, user));
+  const [paxIdx,     setPaxIdx]     = useState(0); // which passenger we're editing
+  const [seats,      setSeats]      = useState([]); // seats[i] = seatId or null
+  const [seatPaxIdx, setSeatPaxIdx] = useState(0); // which passenger we're picking seat for
+  const [extras,     setExtras]     = useState([]);
+  const [agreed,     setAgreed]     = useState(false);
+  const [authDone,   setAuthDone]   = useState(!!user);
+  const [cardNum,    setCardNum]    = useState("");
+  const [cardExp,    setCardExp]    = useState("");
+  const [cardCvv,    setCardCvv]    = useState("");
+  const [cardName,   setCardName]   = useState("");
+  const [savedCard,  setSavedCard]  = useState(() => getSavedCard());
+  const [useSavedCard, setUseSavedCard] = useState(() => Boolean(getSavedCard()));
+  const [rememberCard, setRememberCard] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitErr,  setSubmitErr]  = useState(null);
+
   if (!flight) {
     return (
       <div className="page booking-flow-page">
@@ -345,31 +363,13 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
     );
   }
 
-  const [passengers, setPassengers] = useState(() => buildPassengers(flight, user));
-  const [paxIdx,     setPaxIdx]     = useState(0); // which passenger we're editing
-  const [seats,      setSeats]      = useState([]); // seats[i] = seatId or null
-  const [seatPaxIdx, setSeatPaxIdx] = useState(0); // which passenger we're picking seat for
-
   const paxCount = passengers.length;
 
   function setPaxField(idx, field, value) {
     setPassengers(prev => prev.map((p, i) => i === idx ? { ...p, [field]: value } : p));
   }
 
-  const [extras,     setExtras]     = useState([]);
-  const [agreed,     setAgreed]     = useState(false);
-  const [authDone,   setAuthDone]   = useState(!!user);
-  const [cardNum,    setCardNum]    = useState("");
-  const [cardExp,    setCardExp]    = useState("");
-  const [cardCvv,    setCardCvv]    = useState("");
-  const [cardName,   setCardName]   = useState("");
-  const [savedCard,  setSavedCard]  = useState(() => getSavedCard());
-  const [useSavedCard, setUseSavedCard] = useState(() => Boolean(getSavedCard()));
-  const [rememberCard, setRememberCard] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [submitErr,  setSubmitErr]  = useState(null);
-
-  const isBiz      = flight?.travelClass === "business";
+  const isBiz      = hasFlight && flight.travelClass === "business";
   const pricePerPax = flight?.totalPrice || flight?.price || 0;
   const baseFareTotal = pricePerPax * paxCount;
   const seatCostTotal = seats.reduce((sum, seatId) => {

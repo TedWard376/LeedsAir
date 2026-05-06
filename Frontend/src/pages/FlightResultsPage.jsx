@@ -51,30 +51,34 @@ function useDatePrices(from, to, centerDate, windowDays = 3) {
   useEffect(() => {
     if (!from || !to || !centerDate) return;
     let cancelled = false;
-    setLoading(true);
+    async function fetchDatePrices() {
+      setLoading(true);
 
-    const dates = [];
-    for (let i = -windowDays; i <= windowDays; i++) {
-      dates.push(addDays(centerDate, i));
-    }
+      const dates = [];
+      for (let i = -windowDays; i <= windowDays; i++) {
+        dates.push(addDays(centerDate, i));
+      }
 
-    Promise.all(
-      dates.map(date =>
-        fetch(buildApiUrl(`/flights?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&departureDate=${date}`))
-          .then(r => r.ok ? r.json() : [])
-          .then(flights => [date, flights?.length ? Math.min(...flights.map(f => f.price)) : null])
-          .catch(() => [date, null])
-      )
-    ).then(results => {
+      const results = await Promise.all(
+        dates.map(date =>
+          fetch(buildApiUrl(`/flights?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&departureDate=${date}`))
+            .then(r => r.ok ? r.json() : [])
+            .then(flights => [date, flights?.length ? Math.min(...flights.map(f => f.price)) : null])
+            .catch(() => [date, null])
+        )
+      );
+
       if (cancelled) return;
       const map = {};
       results.forEach(([date, price]) => { map[date] = price; });
       setPrices(map);
       setLoading(false);
-    });
+    }
+
+    fetchDatePrices();
 
     return () => { cancelled = true; };
-  }, [from, to, centerDate]);
+  }, [from, to, centerDate, windowDays]);
 
   return { prices, loading };
 }
@@ -87,15 +91,18 @@ function DatePriceBar({ from, to, selectedDate, onDateChange, windowDays = 3 }) 
   // recenter the bar so the selected date is always visible
   useEffect(() => {
     if (!selectedDate) return;
-    if (!centerDate) { setCenterDate(selectedDate); return; }
+    if (!centerDate) {
+      queueMicrotask(() => setCenterDate(selectedDate));
+      return;
+    }
     // Check if selectedDate is within the current window
     const centerMs = localDateFromIso(centerDate).getTime();
     const selMs    = localDateFromIso(selectedDate).getTime();
     const dayMs    = 86400000;
     if (Math.abs(selMs - centerMs) > windowDays * dayMs) {
-      setCenterDate(selectedDate);
+      queueMicrotask(() => setCenterDate(selectedDate));
     }
-  }, [selectedDate]);
+  }, [centerDate, selectedDate, windowDays]);
 
   if (!selectedDate) return null;
 
@@ -265,7 +272,7 @@ function FlightResultCard({ flight, onSelectFare }) {
 }
 
 // ── Outbound or Return flight list ────────────────────────
-function FlightList({ from, to, date, searchParams, fareModal, setFareModal }) {
+function FlightList({ from, to, date, searchParams, setFareModal }) {
   const [activeDate,  setActiveDate]  = useState(date);
   const [sortBy,      setSortBy]      = useState("recommended");
   const [filterStops, setFilterStops] = useState("all");

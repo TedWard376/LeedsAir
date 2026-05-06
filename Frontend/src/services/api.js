@@ -42,7 +42,9 @@ async function request(path, options = {}, authTokenKey = "token") {
     try {
       const err = await res.json();
       message = err.message || err.error || message;
-    } catch {}
+    } catch {
+      // Ignore non-JSON error bodies and fall back to the HTTP status message.
+    }
     throw new Error(normalizeErrorMessage(message, path));
   }
   // 204 No Content

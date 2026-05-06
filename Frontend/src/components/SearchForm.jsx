@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
 import { buildApiUrl } from "../services/api";
 
 // ── Airport data ──────────────────────────────────────────
@@ -35,45 +35,49 @@ const DAYS   = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 function useMonthPrices(from, to, year, month) {
   const [prices,  setPrices]  = useState({}); // { "2026-04-15": 89, ... }
   const [loading, setLoading] = useState(false);
+  const routeReady = Boolean(from && to);
 
   useEffect(() => {
-    if (!from || !to) { setPrices({}); return; }
+    if (!routeReady) return;
     let cancelled = false;
-    setLoading(true);
+    async function fetchMonthPrices() {
+      setLoading(true);
 
-    function pad(n) { return String(n).padStart(2, "0"); }
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
+      function pad(n) { return String(n).padStart(2, "0"); }
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-    // Build all dates in this month
-    const dates = [];
-    for (let d = 1; d <= daysInMonth; d++) {
-      dates.push(`${year}-${pad(month + 1)}-${pad(d)}`);
-    }
+      const dates = [];
+      for (let d = 1; d <= daysInMonth; d++) {
+        dates.push(`${year}-${pad(month + 1)}-${pad(d)}`);
+      }
 
-    Promise.all(
-      dates.map(date =>
-        fetch(buildApiUrl(`/flights?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&departureDate=${date}`))
-          .then(r => r.ok ? r.json() : [])
-          .then(flights => {
-            if (flights && flights.length > 0) {
-              return [date, Math.min(...flights.map(f => f.price))];
-            }
-            return [date, null];
-          })
-          .catch(() => [date, null])
-      )
-    ).then(results => {
+      const results = await Promise.all(
+        dates.map(date =>
+          fetch(buildApiUrl(`/flights?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&departureDate=${date}`))
+            .then(r => r.ok ? r.json() : [])
+            .then(flights => {
+              if (flights && flights.length > 0) {
+                return [date, Math.min(...flights.map(f => f.price))];
+              }
+              return [date, null];
+            })
+            .catch(() => [date, null])
+        )
+      );
+
       if (cancelled) return;
       const map = {};
       results.forEach(([d, p]) => { map[d] = p; });
       setPrices(map);
       setLoading(false);
-    });
+    }
+
+    fetchMonthPrices();
 
     return () => { cancelled = true; };
-  }, [from, to, year, month]);
+  }, [from, to, year, month, routeReady]);
 
-  return { prices, loading };
+  return { prices: routeReady ? prices : {}, loading: routeReady ? loading : false };
 }
 
 // ── AirportPicker ─────────────────────────────────────────
@@ -162,8 +166,19 @@ function CalendarPicker({ label, value, onChange, minDate, icon, from, to }) {
   const initDisplay = value
     ? new Date(value + "T00:00:00")
     : (minD > todayObj ? minD : todayObj);
-  const [viewYear,  setViewYear]  = useState(initDisplay.getFullYear());
-  const [viewMonth, setViewMonth] = useState(initDisplay.getMonth());
+  const minimumDisplay = minDate ? new Date(minDate + "T00:00:00") : null;
+  const minimumYear = minimumDisplay?.getFullYear() ?? null;
+  const minimumMonth = minimumDisplay?.getMonth() ?? null;
+  const initialViewMonth = minimumYear !== null && minimumMonth !== null &&
+    new Date(initDisplay.getFullYear(), initDisplay.getMonth(), 1) < new Date(minimumYear, minimumMonth, 1)
+    ? minimumMonth
+    : initDisplay.getMonth();
+  const initialViewYear = minimumYear !== null && minimumMonth !== null &&
+    new Date(initDisplay.getFullYear(), initDisplay.getMonth(), 1) < new Date(minimumYear, minimumMonth, 1)
+    ? minimumYear
+    : initDisplay.getFullYear();
+  const [viewYear,  setViewYear]  = useState(initialViewYear);
+  const [viewMonth, setViewMonth] = useState(initialViewMonth);
 
   // Fetch real prices for this month + route
   const { prices: fetchedPrices, loading: pricesLoading } = useMonthPrices(
@@ -177,15 +192,6 @@ function CalendarPicker({ label, value, onChange, minDate, icon, from, to }) {
     document.addEventListener("mousedown", handle);
     return () => document.removeEventListener("mousedown", handle);
   }, []);
-
-  useEffect(() => {
-    if (!minDate) return;
-    const min = new Date(minDate + "T00:00:00");
-    if (new Date(viewYear, viewMonth, 1) < new Date(min.getFullYear(), min.getMonth(), 1)) {
-      setViewYear(min.getFullYear());
-      setViewMonth(min.getMonth());
-    }
-  }, [minDate]);
 
   function pad(n) { return String(n).padStart(2, "0"); }
   function toIso(y, m, d) { return `${y}-${pad(m + 1)}-${pad(d)}`; }

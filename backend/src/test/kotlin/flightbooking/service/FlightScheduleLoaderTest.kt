@@ -7,7 +7,6 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class FlightScheduleLoaderTest {
-
     @Test
     fun `loadFromCsv returns seeded schedules`() {
         val rows = FlightScheduleLoader.loadFromCsv()
@@ -32,12 +31,14 @@ class FlightScheduleLoaderTest {
     fun `loadFromCsv skips blank required fields`() {
         val rows = FlightScheduleLoader.loadFromCsv()
 
-        assertTrue(rows.none { row ->
-            row.flightNumber.isBlank() ||
-                row.from.isBlank() ||
-                row.to.isBlank() ||
-                row.departureTime.isBlank() ||
-                row.arrivalTime.isBlank()
-        })
+        assertTrue(
+            rows.none { row ->
+                row.flightNumber.isBlank() ||
+                    row.from.isBlank() ||
+                    row.to.isBlank() ||
+                    row.departureTime.isBlank() ||
+                    row.arrivalTime.isBlank()
+            },
+        )
     }
 }

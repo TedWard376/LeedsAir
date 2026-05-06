@@ -1,7 +1,8 @@
 plugins {
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.ktor)
-    kotlin("plugin.serialization") version "2.3.10" //Plugin for JSON serialization
+    alias(libs.plugins.ktlint)
+    kotlin("plugin.serialization") version "2.3.10" // Plugin for JSON serialization
 }
 
 group = "uk.ac.comp2850"
@@ -15,6 +16,12 @@ kotlin {
     jvmToolchain(21)
 }
 
+ktlint {
+    android.set(false)
+    outputToConsole.set(true)
+    ignoreFailures.set(false)
+}
+
 dependencies {
     implementation(libs.ktor.server.core)
     implementation(libs.ktor.server.netty)
@@ -24,7 +31,7 @@ dependencies {
     implementation(libs.ktor.server.config.yaml)
     implementation(libs.logback.classic)
 
-    //Dependencies for API call
+    // Dependencies for API call
     implementation("io.ktor:ktor-client-core:2.3.7")
     implementation("io.ktor:ktor-client-cio:2.3.7")
     implementation("io.ktor:ktor-client-content-negotiation:2.3.7")
