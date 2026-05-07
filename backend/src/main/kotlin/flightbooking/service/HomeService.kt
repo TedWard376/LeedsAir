@@ -93,7 +93,14 @@ object HomeService {
     )
 
     suspend fun getHomeData(userIp: String?): HomeResponse {
-        val nearestAirport = Airports.firstOrNull { it.iata_code == "LBA" }?.toDbAirport() ?: Airports[0].toDbAirport()
+        val nearestAirport =
+            userIp?.let { ip ->
+                try {
+                    getNearestAirport(ip).toDbAirport()
+                } catch (e: Exception) {
+                    null
+                }
+            } ?: Airports.firstOrNull { it.iata_code == "LBA" }?.toDbAirport() ?: Airports[0].toDbAirport()
 
         return HomeResponse(
             brandName = "FLIGHT BOOKING SYSTEM",

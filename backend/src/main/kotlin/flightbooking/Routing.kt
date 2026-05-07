@@ -1,7 +1,7 @@
 package flightbooking
 
-import flightbooking.service.AuthService
 import flightbooking.service.AdminService
+import flightbooking.service.AuthService
 import flightbooking.service.BookingService
 import flightbooking.service.ComplaintService
 import flightbooking.service.AirportService
@@ -9,10 +9,14 @@ import flightbooking.service.FlightService
 import flightbooking.service.HomeService
 import flightbooking.service.LoyaltyService
 import io.ktor.http.HttpStatusCode
-import io.ktor.server.application.*
+import io.ktor.server.application.Application
 import io.ktor.server.request.receiveText
-import io.ktor.server.response.*
-import io.ktor.server.routing.*
+import io.ktor.server.response.respond
+import io.ktor.server.response.respondText
+import io.ktor.server.routing.get
+import io.ktor.server.routing.post
+import io.ktor.server.routing.put
+import io.ktor.server.routing.routing
 import kotlinx.serialization.SerializationException
 
 fun Application.configureRouting() {
@@ -36,8 +40,8 @@ fun Application.configureRouting() {
                 FlightService.searchFlights(
                     from = call.request.queryParameters["from"],
                     to = call.request.queryParameters["to"],
-                    departureDate = call.request.queryParameters["departureDate"]
-                )
+                    departureDate = call.request.queryParameters["departureDate"],
+                ),
             )
         }
 
@@ -187,11 +191,12 @@ fun Application.configureRouting() {
             } catch (_: SerializationException) {
                 call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid admin decision payload"))
             } catch (e: IllegalArgumentException) {
-                val status = when (e.message) {
-                    "Modification request not found" -> HttpStatusCode.NotFound
-                    "Missing or invalid Authorization header", "Invalid admin token" -> HttpStatusCode.Unauthorized
-                    else -> HttpStatusCode.BadRequest
-                }
+                val status =
+                    when (e.message) {
+                        "Modification request not found" -> HttpStatusCode.NotFound
+                        "Missing or invalid Authorization header", "Invalid admin token" -> HttpStatusCode.Unauthorized
+                        else -> HttpStatusCode.BadRequest
+                    }
                 call.respond(status, mapOf("error" to (e.message ?: "Unable to update modification request")))
             }
         }
@@ -202,7 +207,7 @@ fun Application.configureRouting() {
             if (rawUserId != null && rawUserId.toIntOrNull() == null) {
                 call.respond(
                     status = HttpStatusCode.BadRequest,
-                    message = mapOf("error" to "Missing or invalid userId")
+                    message = mapOf("error" to "Missing or invalid userId"),
                 )
                 return@get
             }
@@ -216,7 +221,7 @@ fun Application.configureRouting() {
             if (ref.isBlank() || lastName.isBlank()) {
                 call.respond(
                     status = HttpStatusCode.BadRequest,
-                    message = mapOf("error" to "Missing ref or lastName")
+                    message = mapOf("error" to "Missing ref or lastName"),
                 )
                 return@get
             }
@@ -235,7 +240,7 @@ fun Application.configureRouting() {
             if (requestBody.isBlank()) {
                 call.respond(
                     status = HttpStatusCode.BadRequest,
-                    message = mapOf("error" to "Request body cannot be empty")
+                    message = mapOf("error" to "Request body cannot be empty"),
                 )
                 return@post
             }
@@ -243,17 +248,17 @@ fun Application.configureRouting() {
             try {
                 call.respond(
                     status = HttpStatusCode.Created,
-                    message = BookingService.newBooking(requestBody)
+                    message = BookingService.newBooking(requestBody),
                 )
             } catch (e: SerializationException) {
                 call.respond(
                     status = HttpStatusCode.BadRequest,
-                    message = mapOf("error" to (e.message ?: "Invalid booking payload"))
+                    message = mapOf("error" to (e.message ?: "Invalid booking payload")),
                 )
             } catch (e: IllegalArgumentException) {
                 call.respond(
                     status = HttpStatusCode.BadRequest,
-                    message = mapOf("error" to (e.message ?: "Invalid booking payload"))
+                    message = mapOf("error" to (e.message ?: "Invalid booking payload")),
                 )
             }
         }

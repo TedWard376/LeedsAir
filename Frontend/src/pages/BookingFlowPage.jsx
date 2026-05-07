@@ -193,14 +193,14 @@ function SeatMap({ selected, onSelect, travelClass, chosenByOthers = [] }) {
         {ROWS_BIZ.map(row => (
           <div key={row} className="seat-row">
             <span className="seat-row-num">{row}</span>
-            {COLS.map((col, ci) => renderSeat(row, col))}
+            {COLS.map((col) => renderSeat(row, col))}
           </div>
         ))}
         <div className="cabin-divider"><span>Economy Class {isBizBooking && "— Business ticket only"}</span></div>
         {ROWS_ECO.map(row => (
           <div key={row} className="seat-row">
             <span className="seat-row-num">{row}</span>
-            {COLS.map((col, ci) => renderSeat(row, col))}
+            {COLS.map((col) => renderSeat(row, col))}
           </div>
         ))}
       </div>
@@ -215,6 +215,24 @@ const EXTRAS_LIST = [
   { id: "legroom",   label: "Extra legroom seat",   price: 25, icon: "💺" },
   { id: "insurance", label: "Travel insurance",     price: 18, icon: "🛡"  },
 ];
+
+const EXTRA_DETAILS = {
+  bag20: ["Adds one extra checked bag", "Useful for short trips or extra shopping"],
+  bag32: ["Higher baggage allowance", "Ideal for longer trips or family travel"],
+  priority: ["Board earlier than standard groups", "Helps secure cabin bag space sooner"],
+  legroom: ["More space around your seat", "Good choice for longer flights"],
+  insurance: ["Cover for cancellation and delays", "Includes lost baggage protection"],
+};
+
+function ExtrasInfoList() {
+  return (
+    <ul className="extras-info-list">
+      <li>Extras are optional and apply to the full booking unless stated otherwise.</li>
+      <li>Any selected extras are included in your final total before payment.</li>
+      <li>Travel insurance includes a policy link so you can review the cover before selecting it.</li>
+    </ul>
+  );
+}
 
 function AuthPanel({ onAuthComplete }) {
   const { loginUser } = useAuth();
@@ -311,6 +329,24 @@ function paxLabel(pax, idx) {
 export function BookingFlowPage({ flight, onNavigate, onComplete }) {
   const { user } = useAuth();
   const [step, setStep] = useState(0);
+  const hasFlight = Boolean(flight);
+  const [passengers, setPassengers] = useState(() => buildPassengers(flight, user));
+  const [paxIdx,     setPaxIdx]     = useState(0); // which passenger we're editing
+  const [seats,      setSeats]      = useState([]); // seats[i] = seatId or null
+  const [seatPaxIdx, setSeatPaxIdx] = useState(0); // which passenger we're picking seat for
+  const [extras,     setExtras]     = useState([]);
+  const [agreed,     setAgreed]     = useState(false);
+  const [authDone,   setAuthDone]   = useState(!!user);
+  const [cardNum,    setCardNum]    = useState("");
+  const [cardExp,    setCardExp]    = useState("");
+  const [cardCvv,    setCardCvv]    = useState("");
+  const [cardName,   setCardName]   = useState("");
+  const [savedCard,  setSavedCard]  = useState(() => getSavedCard());
+  const [useSavedCard, setUseSavedCard] = useState(() => Boolean(getSavedCard()));
+  const [rememberCard, setRememberCard] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitErr,  setSubmitErr]  = useState(null);
+
   if (!flight) {
     return (
       <div className="page booking-flow-page">
@@ -327,31 +363,13 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
     );
   }
 
-  const [passengers, setPassengers] = useState(() => buildPassengers(flight, user));
-  const [paxIdx,     setPaxIdx]     = useState(0); // which passenger we're editing
-  const [seats,      setSeats]      = useState([]); // seats[i] = seatId or null
-  const [seatPaxIdx, setSeatPaxIdx] = useState(0); // which passenger we're picking seat for
-
   const paxCount = passengers.length;
 
   function setPaxField(idx, field, value) {
     setPassengers(prev => prev.map((p, i) => i === idx ? { ...p, [field]: value } : p));
   }
 
-  const [extras,     setExtras]     = useState([]);
-  const [agreed,     setAgreed]     = useState(false);
-  const [authDone,   setAuthDone]   = useState(!!user);
-  const [cardNum,    setCardNum]    = useState("");
-  const [cardExp,    setCardExp]    = useState("");
-  const [cardCvv,    setCardCvv]    = useState("");
-  const [cardName,   setCardName]   = useState("");
-  const [savedCard,  setSavedCard]  = useState(() => getSavedCard());
-  const [useSavedCard, setUseSavedCard] = useState(() => Boolean(getSavedCard()));
-  const [rememberCard, setRememberCard] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [submitErr,  setSubmitErr]  = useState(null);
-
-  const isBiz      = flight?.travelClass === "business";
+  const isBiz      = hasFlight && flight.travelClass === "business";
   const pricePerPax = flight?.totalPrice || flight?.price || 0;
   const baseFareTotal = pricePerPax * paxCount;
   const seatCostTotal = seats.reduce((sum, seatId) => {
@@ -665,6 +683,7 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
       <div className="booking-flow-body"><div className="flow-step-body">
         <h2 className="flow-step-title">Add Extras</h2>
         <p className="flow-subtitle">Enhance your journey. Extras apply to the whole booking.</p>
+        <ExtrasInfoList />
         <div className="extras-grid">
           {EXTRAS_LIST.map(extra => {
             const checked = extras.includes(extra.id);
@@ -674,6 +693,13 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
                 <div className="extra-info">
                   <span className="extra-label">{extra.label}</span>
                   <span className="extra-price">+£{extra.price}</span>
+                  {EXTRA_DETAILS[extra.id]?.length > 0 && (
+                    <ul className="extra-points-list">
+                      {EXTRA_DETAILS[extra.id].map((point) => (
+                        <li key={point}>{point}</li>
+                      ))}
+                    </ul>
+                  )}
                   {extra.id === "insurance" && (
                     <small>
                       Covers cancellation, delays and lost baggage.{" "}
@@ -771,6 +797,7 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
           {extras.length > 0 && (
             <div className="review-section">
               <h3>Extras</h3>
+              <ExtrasInfoList />
               {extras.map(id => { const ex=EXTRAS_LIST.find(e=>e.id===id); return ex?<div key={id} className="review-row"><span>{ex.label}</span><span>+£{ex.price}</span></div>:null; })}
             </div>
           )}

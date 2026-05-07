@@ -18,7 +18,7 @@ export function ComplaintPage() {
     category: "",
     description: "",
   });
-  const [file, setFile] = useState(null);
+  const [selectedFileName, setSelectedFileName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [confirmation, setConfirmation] = useState(null);
@@ -114,10 +114,11 @@ export function ComplaintPage() {
             <input
               type="file"
               accept=".pdf,.jpg,.jpeg,.png"
-              onChange={(e) => setFile(e.target.files[0])}
+              onChange={(e) => setSelectedFileName(e.target.files?.[0]?.name || "")}
               className="file-input"
             />
             <span className="file-hint">PDF, JPG or PNG, max 5MB</span>
+            {selectedFileName && <span className="file-hint">Selected: {selectedFileName}</span>}
           </div>
 
           {error && <div className="form-error">⚠ {error}</div>}

@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { SearchForm } from "../components/SearchForm";
 import { getHomeData } from "../services/api";
 
+<<<<<<< HEAD
 const FALLBACK = [
   { code: "BCN", city: "Barcelona", flag: "🇪🇸", price: 89 },
   { code: "AMS", city: "Amsterdam", flag: "🇳🇱", price: 65 },
@@ -14,6 +15,9 @@ const INSPIRATION_CARDS = [
   { title: "Best for sunshine", route: "LBA to Barcelona", blurb: "Warm-weather escapes that still feel affordable.", to: "BCN" },
   { title: "Long-haul standout", route: "LBA to Dubai", blurb: "A higher-value trip when you want a bigger experience.", to: "DXB" },
 ];
+=======
+const DEFAULT_CODES = ["AMS", "BCN", "CDG", "DUB", "MAD", "FCO"];
+>>>>>>> origin/develop
 
 function destCode(routeStr) {
   const parts = routeStr.split(/→|->/).map((value) => value.trim());
@@ -69,6 +73,7 @@ export function HomePage({ onSearch, confirmedBooking, onDismissConfirmation }) 
   useEffect(() => {
     let cancelled = false;
 
+<<<<<<< HEAD
     async function loadDestinations() {
       try {
         const homeData = await getHomeData();
@@ -77,6 +82,33 @@ export function HomePage({ onSearch, confirmedBooking, onDismissConfirmation }) 
             ...c,
             flag: "" // We no longer use flag emoji as per user request
           })));
+=======
+    async function loadPopular() {
+      setLoading(true);
+
+      try {
+        const reports = await adminGetReports();
+        const seenDestinations = new Set();
+        const popularCodes = (reports.popularRoutes || [])
+          .map(({ route, count }) => ({ code: destCode(route), count }))
+          .filter(({ code }) => {
+            if (!code || seenDestinations.has(code)) return false;
+            seenDestinations.add(code);
+            return Boolean(AIRPORTS[code]);
+          })
+          .slice(0, 6);
+
+        let cards = (await Promise.all(
+          popularCodes.map(({ code, count }) => getDestinationCard(code, count))
+        )).filter(Boolean);
+
+        if (!cards.length) {
+          cards = (await Promise.all(DEFAULT_CODES.map((code) => getDestinationCard(code)))).filter(Boolean);
+        }
+
+        if (!cancelled) {
+          setDestinations(cards.slice(0, 4));
+>>>>>>> origin/develop
           setLoading(false);
         }
       } catch {

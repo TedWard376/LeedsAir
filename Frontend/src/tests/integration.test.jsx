@@ -6,11 +6,11 @@ import {
   getProfile,
 } from "../services/api.js";
 
-const originalFetch = global.fetch;
+const originalFetch = globalThis.fetch;
 
 afterEach(() => {
   vi.restoreAllMocks();
-  global.fetch = originalFetch;
+  globalThis.fetch = originalFetch;
   localStorage.clear();
 });
 
@@ -21,7 +21,7 @@ describe("Integration: API service layer", () => {
 
   it("sends the user bearer token when loading the profile", async () => {
     localStorage.setItem("token", "user-token-123");
-    global.fetch = vi.fn().mockResolvedValue({
+    globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
       json: async () => ({ id: 7, email: "user@test.com" }),
@@ -29,7 +29,7 @@ describe("Integration: API service layer", () => {
 
     await getProfile();
 
-    expect(global.fetch).toHaveBeenCalledWith(
+    expect(globalThis.fetch).toHaveBeenCalledWith(
       expect.stringContaining("/auth/profile"),
       expect.objectContaining({
         headers: expect.objectContaining({
@@ -41,7 +41,7 @@ describe("Integration: API service layer", () => {
 
   it("sends the admin bearer token for admin report requests", async () => {
     localStorage.setItem("adminToken", "admin-token-456");
-    global.fetch = vi.fn().mockResolvedValue({
+    globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
       json: async () => ({ bookingsByStatus: [] }),
@@ -49,7 +49,7 @@ describe("Integration: API service layer", () => {
 
     await adminGetReports();
 
-    expect(global.fetch).toHaveBeenCalledWith(
+    expect(globalThis.fetch).toHaveBeenCalledWith(
       expect.stringContaining("/admin/reports"),
       expect.objectContaining({
         headers: expect.objectContaining({
@@ -60,7 +60,7 @@ describe("Integration: API service layer", () => {
   });
 
   it("posts booking payloads to the bookings endpoint", async () => {
-    global.fetch = vi.fn().mockResolvedValue({
+    globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
       status: 201,
       json: async () => ({ bookingReference: "LEEDS1234" }),
@@ -68,7 +68,7 @@ describe("Integration: API service layer", () => {
 
     await createBooking({ flightId: "321", travelClass: "economy", totalPrice: 99 });
 
-    expect(global.fetch).toHaveBeenCalledWith(
+    expect(globalThis.fetch).toHaveBeenCalledWith(
       expect.stringContaining("/bookings"),
       expect.objectContaining({
         method: "POST",

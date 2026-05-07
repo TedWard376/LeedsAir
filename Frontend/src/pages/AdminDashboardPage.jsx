@@ -475,6 +475,16 @@ export function AdminDashboardPage({ onNavigate }) {
 
         {!loading && !error && tab === "modifications" && (
           <div className="modifications-section">
+            <div style={{ marginBottom: "2rem" }}>
+              <h3 style={{ marginBottom: "1rem" }}>Change Tracking Summary</h3>
+              <div className="admin-metrics">
+                <MetricCard icon="Changes" value={modifications.length} label="Pending Changes" />
+                <MetricCard icon="Cancel" value={bookings.filter((booking) => booking.status === "Cancelled").length} label="Cancellations" />
+                <MetricCard icon="Boarded" value={bookings.filter((booking) => booking.checkedIn).length} label="Checked In" />
+                <MetricCard icon="Confirmed" value={bookings.filter((booking) => booking.status === "Confirmed").length} label="Confirmed" />
+              </div>
+            </div>
+
             <h2>Modification Requests</h2>
             <p className="section-subtitle">
               Bookings with pending change requests or awaiting admin approval.
@@ -541,16 +551,57 @@ export function AdminDashboardPage({ onNavigate }) {
                 ))}
               </div>
             )}
+          </div>
+        )}
 
-            <div style={{ marginTop: "2rem" }}>
-              <h3 style={{ marginBottom: "1rem" }}>Change Tracking Summary</h3>
-              <div className="admin-metrics">
-                <MetricCard icon="Changes" value={modifications.length} label="Pending Changes" />
-                <MetricCard icon="Cancel" value={bookings.filter((booking) => booking.status === "Cancelled").length} label="Cancellations" />
-                <MetricCard icon="Boarded" value={bookings.filter((booking) => booking.checkedIn).length} label="Checked In" />
-                <MetricCard icon="Confirmed" value={bookings.filter((booking) => booking.status === "Confirmed").length} label="Confirmed" />
+        {!loading && !error && tab === "complaints" && (
+          <div className="modifications-section">
+            <h2>Customer Complaints</h2>
+            <p className="section-subtitle">
+              Review submitted complaints from customers and follow up by booking reference.
+            </p>
+
+            {!complaints && <LoadingSpinner message="Loading complaints..." />}
+
+            {complaints && complaints.length === 0 && (
+              <div className="empty-state">
+                <span className="empty-icon">✓</span>
+                <p>No complaints submitted yet.</p>
               </div>
-            </div>
+            )}
+
+            {complaints && complaints.length > 0 && (
+              <div className="admin-table-wrapper">
+                <div className="admin-table-header" style={{ gridTemplateColumns: "0.7fr 1fr 1fr 0.8fr 0.9fr 1.8fr" }}>
+                  <span>ID</span>
+                  <span>Customer</span>
+                  <span>Booking</span>
+                  <span>Status</span>
+                  <span>Submitted</span>
+                  <span>Complaint</span>
+                </div>
+                {complaints.map((complaint) => (
+                  <div className="admin-table-row" style={{ gridTemplateColumns: "0.7fr 1fr 1fr 0.8fr 0.9fr 1.8fr" }} key={complaint.id}>
+                    <span className="ref-value">CMP{String(complaint.id).padStart(6, "0")}</span>
+                    <span>
+                      <strong>{complaint.customerName || "Guest customer"}</strong>
+                      <br />
+                      <small>{complaint.customerEmail || "-"}</small>
+                    </span>
+                    <span>{complaint.bookingReference || "Not provided"}</span>
+                    <span className={`status-badge status-${String(complaint.status || "open").toLowerCase()}`}>
+                      {complaint.status || "Open"}
+                    </span>
+                    <span>{complaint.createdAt ? new Date(complaint.createdAt).toLocaleString("en-GB") : "-"}</span>
+                    <span>
+                      <strong>{complaint.subject || "General complaint"}</strong>
+                      <br />
+                      <small>{complaint.message || "No details provided."}</small>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

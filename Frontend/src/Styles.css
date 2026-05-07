@@ -3015,6 +3015,13 @@ body {
 
 /* Extras */
 .extras-grid { display: flex; flex-direction: column; gap: .6rem; margin-bottom: 1.25rem; }
+.extras-info-list {
+  margin: 0 0 1rem 1.1rem;
+  color: var(--muted);
+  font-size: .88rem;
+  line-height: 1.6;
+}
+.extras-info-list li + li { margin-top: .2rem; }
 .extra-card {
   display: flex;
   align-items: center;
@@ -3031,6 +3038,13 @@ body {
 .extra-info { flex: 1; }
 .extra-label { display: block; font-weight: 600; font-size: .9rem; }
 .extra-price { display: block; font-size: .82rem; color: var(--sky); font-weight: 700; }
+.extra-points-list {
+  margin: .45rem 0 0 1rem;
+  color: var(--muted);
+  font-size: .8rem;
+  line-height: 1.5;
+}
+.extra-points-list li + li { margin-top: .15rem; }
 .extra-check {
   width: 26px; height: 26px;
   border-radius: 50%;

@@ -10,14 +10,14 @@ import java.io.InputStreamReader
  * Filtered: large_airport, medium_airport with IATA codes.
  */
 object AirportLoader {
-
     private const val CSV_PATH = "data/airports.csv"
 
     fun loadFromCsv(): List<Airport> {
-        val reader = InputStreamReader(
-            javaClass.classLoader.getResourceAsStream(CSV_PATH)
-                ?: throw IllegalStateException("airports.csv not found at $CSV_PATH")
-        )
+        val reader =
+            InputStreamReader(
+                javaClass.classLoader.getResourceAsStream(CSV_PATH)
+                    ?: throw IllegalStateException("airports.csv not found at $CSV_PATH"),
+            )
         return reader.use {
             CSVParser.parse(it, CSVFormat.DEFAULT.builder().setHeader().setSkipHeaderRecord(true).build()).use { parser ->
                 parser.mapNotNull { record ->
@@ -33,7 +33,7 @@ object AirportLoader {
                         iso_country = record.get("iso_country").ifBlank { "XX" },
                         municipality = record.get("municipality"),
                         icao_code = record.get("icao_code").ifBlank { ident },
-                        iata_code = iataCode.ifBlank { ident }
+                        iata_code = iataCode.ifBlank { ident },
                     )
                 }
             }
