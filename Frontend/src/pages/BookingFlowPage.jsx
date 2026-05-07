@@ -1,17 +1,102 @@
 import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { createBooking, login, register } from "../services/api";
+import { RouteMap } from "../components/RouteMap";
 
-// ─────────────────────────────────────────────────────────
-// ARCHITECTURE: All step content is direct JSX (no inner
-// function components) to prevent React remounting inputs.
-// Multi-passenger: passengers[] array, seats[] array,
-// currentPaxIdx tracks which passenger is active.
-// ─────────────────────────────────────────────────────────
+
 
 const MAX_PASSENGERS = 7;
+const SAVED_CARD_STORAGE_KEY = "leedsair_saved_card";
+const INSURANCE_PDF = "/LeedsAir-Travel-Insurance-Policy.pdf";
 
 const FLOW_STEPS = ["Flight summary", "Passenger details", "Seats", "Extras", "Review & Pay"];
+
+function detectCardBrand(cardNumber) {
+  const digits = cardNumber.replace(/\D/g, "");
+  if (digits.startsWith("4")) return "Visa";
+  if (/^5[1-5]/.test(digits)) return "Mastercard";
+  if (/^3[47]/.test(digits)) return "American Express";
+  if (digits.startsWith("6")) return "Discover";
+  return digits ? "Card" : "";
+}
+
+function isValidCardNumber(cardNumber) {
+  const digits = cardNumber.replace(/\D/g, "");
+  if (digits.length < 12) return false;
+  let sum = 0;
+  let shouldDouble = false;
+  for (let i = digits.length - 1; i >= 0; i -= 1) {
+    let digit = Number(digits[i]);
+    if (shouldDouble) {
+      digit *= 2;
+      if (digit > 9) digit -= 9;
+    }
+    sum += digit;
+    shouldDouble = !shouldDouble;
+  }
+  return sum % 10 === 0;
+}
+
+function isValidExpiry(expiryValue) {
+  const [monthRaw, yearRaw] = expiryValue.split("/").map((part) => part.trim());
+  const month = Number(monthRaw);
+  const year = Number(yearRaw?.length === 2 ? `20${yearRaw}` : yearRaw);
+  if (!Number.isFinite(month) || !Number.isFinite(year) || month < 1 || month > 12) return false;
+  const now = new Date();
+  const expiryDate = new Date(year, month, 0, 23, 59, 59);
+  return expiryDate >= now;
+}
+
+function isValidCvv(cvv, cardNumber) {
+  const digits = cvv.replace(/\D/g, "");
+  const brand = detectCardBrand(cardNumber);
+  return brand === "American Express" ? digits.length === 4 : digits.length === 3;
+}
+
+function estimateLoyaltyPoints(total, travelClass, includeFirstBookingBonus) {
+  const multiplier = travelClass === "business" ? 2 : 1;
+  const basePoints = Math.max(0, Math.floor(total)) * multiplier;
+  return basePoints + (includeFirstBookingBonus ? 500 : 0);
+}
+
+function getSavedCard() {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const raw = window.localStorage.getItem(SAVED_CARD_STORAGE_KEY);
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw);
+    if (!parsed?.last4 || !parsed?.maskedNumber || !parsed?.cardholderName || !parsed?.expiryDisplay) {
+      return null;
+    }
+
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function saveCardSummary(cardNumber, cardholderName, expiryMonth, expiryYear) {
+  if (typeof window === "undefined") return;
+
+  const digits = cardNumber.replace(/\D/g, "");
+  const last4 = digits.slice(-4);
+  const normalizedMonth = String(expiryMonth).padStart(2, "0");
+  const shortYear = String(expiryYear).slice(-2);
+
+  window.localStorage.setItem(SAVED_CARD_STORAGE_KEY, JSON.stringify({
+    last4,
+    maskedNumber: `**** **** **** ${last4}`,
+    cardholderName: cardholderName.trim(),
+    expiryDisplay: `${normalizedMonth}/${shortYear}`,
+  }));
+}
+
+function clearSavedCard() {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(SAVED_CARD_STORAGE_KEY);
+}
 
 function FlowStepper({ step }) {
   return (
@@ -27,7 +112,6 @@ function FlowStepper({ step }) {
   );
 }
 
-// ── Seat pricing ──────────────────────────────────────────
 function getSeatPrice(row, col, isBiz) {
   if (isBiz) {
     if (row === 1) return col === "A" || col === "F" ? 55 : 45;
@@ -49,7 +133,6 @@ const ROWS_BIZ = [1, 2, 3];
 const ROWS_ECO = Array.from({ length: 27 }, (_, i) => i + 4);
 const COLS     = ["A", "B", "C", "", "D", "E", "F"];
 
-// SeatMap — module-level, stable, receives already-chosen seats to grey them
 function SeatMap({ selected, onSelect, travelClass, chosenByOthers = [] }) {
   const isBizBooking = travelClass === "business";
   const takenOrChosen = new Set([...BASE_TAKEN, ...chosenByOthers]);
@@ -110,14 +193,14 @@ function SeatMap({ selected, onSelect, travelClass, chosenByOthers = [] }) {
         {ROWS_BIZ.map(row => (
           <div key={row} className="seat-row">
             <span className="seat-row-num">{row}</span>
-            {COLS.map((col, ci) => renderSeat(row, col))}
+            {COLS.map((col) => renderSeat(row, col))}
           </div>
         ))}
         <div className="cabin-divider"><span>Economy Class {isBizBooking && "— Business ticket only"}</span></div>
         {ROWS_ECO.map(row => (
           <div key={row} className="seat-row">
             <span className="seat-row-num">{row}</span>
-            {COLS.map((col, ci) => renderSeat(row, col))}
+            {COLS.map((col) => renderSeat(row, col))}
           </div>
         ))}
       </div>
@@ -133,7 +216,24 @@ const EXTRAS_LIST = [
   { id: "insurance", label: "Travel insurance",     price: 18, icon: "🛡"  },
 ];
 
-// AuthPanel — module-level so inputs never lose focus
+const EXTRA_DETAILS = {
+  bag20: ["Adds one extra checked bag", "Useful for short trips or extra shopping"],
+  bag32: ["Higher baggage allowance", "Ideal for longer trips or family travel"],
+  priority: ["Board earlier than standard groups", "Helps secure cabin bag space sooner"],
+  legroom: ["More space around your seat", "Good choice for longer flights"],
+  insurance: ["Cover for cancellation and delays", "Includes lost baggage protection"],
+};
+
+function ExtrasInfoList() {
+  return (
+    <ul className="extras-info-list">
+      <li>Extras are optional and apply to the full booking unless stated otherwise.</li>
+      <li>Any selected extras are included in your final total before payment.</li>
+      <li>Travel insurance includes a policy link so you can review the cover before selecting it.</li>
+    </ul>
+  );
+}
+
 function AuthPanel({ onAuthComplete }) {
   const { loginUser } = useAuth();
   const [mode,      setMode]      = useState("login");
@@ -199,7 +299,6 @@ function AuthPanel({ onAuthComplete }) {
   );
 }
 
-// ── Helper: build initial passengers array ────────────────
 function buildPassengers(flight, user) {
   const adults   = Math.max(1, Number(flight?.searchParams?.adults)   || 1);
   const children =              Number(flight?.searchParams?.children) || 0;
@@ -227,10 +326,27 @@ function paxLabel(pax, idx) {
   return name ? `${typeLabel} ${idx+1}: ${name}` : `${typeLabel} ${idx+1}`;
 }
 
-// ── Main BookingFlowPage ──────────────────────────────────
 export function BookingFlowPage({ flight, onNavigate, onComplete }) {
   const { user } = useAuth();
   const [step, setStep] = useState(0);
+  const hasFlight = Boolean(flight);
+  const [passengers, setPassengers] = useState(() => buildPassengers(flight, user));
+  const [paxIdx,     setPaxIdx]     = useState(0); // which passenger we're editing
+  const [seats,      setSeats]      = useState([]); // seats[i] = seatId or null
+  const [seatPaxIdx, setSeatPaxIdx] = useState(0); // which passenger we're picking seat for
+  const [extras,     setExtras]     = useState([]);
+  const [agreed,     setAgreed]     = useState(false);
+  const [authDone,   setAuthDone]   = useState(!!user);
+  const [cardNum,    setCardNum]    = useState("");
+  const [cardExp,    setCardExp]    = useState("");
+  const [cardCvv,    setCardCvv]    = useState("");
+  const [cardName,   setCardName]   = useState("");
+  const [savedCard,  setSavedCard]  = useState(() => getSavedCard());
+  const [useSavedCard, setUseSavedCard] = useState(() => Boolean(getSavedCard()));
+  const [rememberCard, setRememberCard] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitErr,  setSubmitErr]  = useState(null);
+
   if (!flight) {
     return (
       <div className="page booking-flow-page">
@@ -247,31 +363,13 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
     );
   }
 
-  // ── Multi-passenger state ─────────────────────────────
-  const [passengers, setPassengers] = useState(() => buildPassengers(flight, user));
-  const [paxIdx,     setPaxIdx]     = useState(0); // which passenger we're editing
-  const [seats,      setSeats]      = useState([]); // seats[i] = seatId or null
-  const [seatPaxIdx, setSeatPaxIdx] = useState(0); // which passenger we're picking seat for
-
   const paxCount = passengers.length;
 
-  // Update a single field on a specific passenger
   function setPaxField(idx, field, value) {
     setPassengers(prev => prev.map((p, i) => i === idx ? { ...p, [field]: value } : p));
   }
 
-  // ── Other booking state ───────────────────────────────
-  const [extras,     setExtras]     = useState([]);
-  const [agreed,     setAgreed]     = useState(false);
-  const [authDone,   setAuthDone]   = useState(!!user);
-  const [cardNum,    setCardNum]    = useState("");
-  const [cardExp,    setCardExp]    = useState("");
-  const [cardCvv,    setCardCvv]    = useState("");
-  const [cardName,   setCardName]   = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [submitErr,  setSubmitErr]  = useState(null);
-
-  const isBiz      = flight?.travelClass === "business";
+  const isBiz      = hasFlight && flight.travelClass === "business";
   const pricePerPax = flight?.totalPrice || flight?.price || 0;
   const baseFareTotal = pricePerPax * paxCount;
   const seatCostTotal = seats.reduce((sum, seatId) => {
@@ -282,6 +380,14 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
   }, 0);
   const extrasCost = extras.reduce((s, id) => s + (EXTRAS_LIST.find(e => e.id === id)?.price || 0), 0);
   const total = baseFareTotal + seatCostTotal + extrasCost;
+  const activeCardNumber = useSavedCard && savedCard ? savedCard.maskedNumber : cardNum;
+  const activeCardName = useSavedCard && savedCard ? savedCard.cardholderName : cardName;
+  const activeCardExpiry = useSavedCard && savedCard ? savedCard.expiryDisplay : cardExp;
+  const cardBrand = useSavedCard && savedCard ? "Saved card" : detectCardBrand(activeCardNumber);
+  const cardNumberValid = useSavedCard && savedCard ? true : isValidCardNumber(activeCardNumber);
+  const expiryValid = useSavedCard && savedCard ? true : isValidExpiry(activeCardExpiry);
+  const cvvValid = isValidCvv(cardCvv, activeCardNumber);
+  const paymentReady = activeCardName.trim() && cardNumberValid && expiryValid && cvvValid;
 
   function toggleExtra(id) {
     setExtras(p => p.includes(id) ? p.filter(e => e !== id) : [...p, id]);
@@ -303,25 +409,52 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
   async function handlePay() {
     setSubmitting(true); setSubmitErr(null);
     try {
+      const expiryParts = activeCardExpiry.split("/").map(part => part.trim());
+      const expiryMonth = Number(expiryParts[0]);
+      const expiryYear = expiryParts[1]
+        ? Number(expiryParts[1].length === 2 ? `20${expiryParts[1]}` : expiryParts[1])
+        : NaN;
+
+      if (!paymentReady || !Number.isFinite(expiryMonth) || !Number.isFinite(expiryYear)) {
+        setSubmitErr("Check your card number, expiry date, cardholder name, and CVV before confirming payment.");
+        setSubmitting(false);
+        return;
+      }
+
       const booking = await createBooking({
-        flightId: flight.id, travelClass: flight.travelClass,
+        userId: user?.id ?? null,
+        flightId: String(flight.id), travelClass: flight.travelClass,
         seats, extras, totalPrice: total, passengers,
         // legacy single-passenger field for server compat
         passenger: passengers[0],
+        payment: {
+          cardholderName: activeCardName,
+          cardNumber: activeCardNumber,
+          expiryMonth,
+          expiryYear,
+          cvv: cardCvv,
+          billingPostalCode: "",
+        },
       });
+
+      if (!useSavedCard && rememberCard) {
+        saveCardSummary(activeCardNumber, activeCardName, expiryMonth, expiryYear);
+        const latestSavedCard = getSavedCard();
+        setSavedCard(latestSavedCard);
+        setUseSavedCard(Boolean(latestSavedCard));
+      }
+
       onComplete(booking);
     } catch (err) { setSubmitErr(err.message); }
     finally { setSubmitting(false); }
   }
 
-  // Validation: all passengers must have first name, last name, passport
-  // Email only required for first (lead) passenger
+
   function paxValid(p, i) {
     return p.firstName && p.lastName && p.passportNumber && (i > 0 || p.email);
   }
   const allPaxValid = passengers.every((p, i) => paxValid(p, i));
 
-  // ── STEP 0 — Flight Summary ───────────────────────────
   if (step === 0) return (
     <div className="booking-flow-page">
       <div className="booking-flow-stepper-bar"><FlowStepper step={0} /></div>
@@ -391,8 +524,7 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
     </div>
   );
 
-  // ── STEP 1 — Passenger Details ────────────────────────
-  // One tab per passenger. Inputs are direct JSX with stable setState.
+  
   if (step === 1) {
     const p   = passengers[paxIdx];
     const isFirst = paxIdx === 0;
@@ -478,8 +610,6 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
     );
   }
 
-  // ── STEP 2 — Seat Selection ───────────────────────────
-  // One seat map per passenger. User picks seat then clicks "Next passenger".
   if (step === 2) {
     const currentSeat = seats[seatPaxIdx] ?? null;
     const chosenByOthers = seats.filter((s, i) => s && i !== seatPaxIdx);
@@ -547,13 +677,13 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
     );
   }
 
-  // ── STEP 3 — Extras ───────────────────────────────────
   if (step === 3) return (
     <div className="booking-flow-page">
       <div className="booking-flow-stepper-bar"><FlowStepper step={3} /></div>
       <div className="booking-flow-body"><div className="flow-step-body">
         <h2 className="flow-step-title">Add Extras</h2>
         <p className="flow-subtitle">Enhance your journey. Extras apply to the whole booking.</p>
+        <ExtrasInfoList />
         <div className="extras-grid">
           {EXTRAS_LIST.map(extra => {
             const checked = extras.includes(extra.id);
@@ -563,6 +693,20 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
                 <div className="extra-info">
                   <span className="extra-label">{extra.label}</span>
                   <span className="extra-price">+£{extra.price}</span>
+                  {EXTRA_DETAILS[extra.id]?.length > 0 && (
+                    <ul className="extra-points-list">
+                      {EXTRA_DETAILS[extra.id].map((point) => (
+                        <li key={point}>{point}</li>
+                      ))}
+                    </ul>
+                  )}
+                  {extra.id === "insurance" && (
+                    <small>
+                      Covers cancellation, delays and lost baggage.{" "}
+                      <a href={INSURANCE_PDF} target="_blank" rel="noreferrer">View policy PDF</a>{" · "}
+                      <a href={INSURANCE_PDF} download>Download PDF</a>
+                    </small>
+                  )}
                 </div>
                 <div className={`extra-check ${checked?"checked":""}`}>{checked?"✓":"+"}</div>
               </div>
@@ -578,7 +722,6 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
     </div>
   );
 
-  // ── STEP 4 — Review & Pay ─────────────────────────────
   return (
     <div className="booking-flow-page">
       <div className="booking-flow-stepper-bar"><FlowStepper step={4} /></div>
@@ -593,7 +736,7 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
         )}
         {authDone && user && (
           <div className="auth-success-banner">
-            🎉 Logged in as <strong>{user.firstName} {user.lastName}</strong> — booking saved &amp; you'll earn <strong>{Math.round(total)} loyalty points</strong>!
+            🎉 Logged in as <strong>{user.firstName} {user.lastName}</strong> — booking saved &amp; you'll earn <strong>{estimateLoyaltyPoints(total, flight.travelClass, (user.loyaltyPoints ?? 0) === 0)} loyalty points</strong>!
           </div>
         )}
 
@@ -601,11 +744,31 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
           {/* Flight */}
           <div className="review-section">
             <h3>Flight</h3>
+            <RouteMap
+              from={flight.from}
+              to={flight.to}
+              stops={flight.stops ?? 0}
+              departureTime={flight.departureTime}
+              arrivalTime={flight.arrivalTime}
+              flightNumber={flight.flightNumber}
+              compact
+              caption="Outbound route"
+            />
             <div className="review-row"><span>Route</span><span>{flight.from} → {flight.to}</span></div>
             <div className="review-row"><span>Flight</span><span>{flight.flightNumber}</span></div>
             <div className="review-row"><span>Departure</span><span>{flight.departureDate} · {flight.departureTime}</span></div>
             <div className="review-row"><span>Class</span><span>{isBiz?"✦ Business":"Economy"} · {flight.selectedFare?.label}</span></div>
             {flight.returnFlight && <>
+              <RouteMap
+                from={flight.returnFlight.from}
+                to={flight.returnFlight.to}
+                stops={flight.returnFlight.stops ?? 0}
+                departureTime={flight.returnFlight.departureTime}
+                arrivalTime={flight.returnFlight.arrivalTime}
+                flightNumber={flight.returnFlight.flightNumber}
+                compact
+                caption="Return route"
+              />
               <div className="review-row"><span>Return flight</span><span>{flight.returnFlight.flightNumber}</span></div>
               <div className="review-row"><span>Return</span><span>{flight.returnFlight.departureDate} · {flight.returnFlight.departureTime}</span></div>
             </>}
@@ -634,6 +797,7 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
           {extras.length > 0 && (
             <div className="review-section">
               <h3>Extras</h3>
+              <ExtrasInfoList />
               {extras.map(id => { const ex=EXTRAS_LIST.find(e=>e.id===id); return ex?<div key={id} className="review-row"><span>{ex.label}</span><span>+£{ex.price}</span></div>:null; })}
             </div>
           )}
@@ -649,27 +813,100 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
 
           {/* Payment */}
           <div className="payment-section">
-            <h3>Payment</h3>
+            <h3>Payment Details</h3>
+            {savedCard && (
+              <div className="saved-card-panel">
+                <div>
+                  <strong>Saved card</strong>
+                  <div className="saved-card-meta">{savedCard.maskedNumber} · {savedCard.expiryDisplay} · {savedCard.cardholderName}</div>
+                </div>
+                <div className="saved-card-actions">
+                  <button
+                    type="button"
+                    className="saved-card-btn"
+                    onClick={() => setUseSavedCard((prev) => !prev)}
+                  >
+                    {useSavedCard ? "Use a different card" : "Use saved card"}
+                  </button>
+                  <button
+                    type="button"
+                    className="saved-card-btn saved-card-btn--danger"
+                    onClick={() => {
+                      clearSavedCard();
+                      setSavedCard(null);
+                      setUseSavedCard(false);
+                    }}
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+            )}
+            <div className="payment-trust-row">
+              <div className="payment-trust-pill">Instant confirmation</div>
+              <div className="payment-trust-pill">No CVV saved</div>
+              <div className="payment-trust-pill">Secure checkout</div>
+            </div>
             <div className="form-row">
               <div className="form-group" style={{flex:2}}>
                 <label>Card number</label>
-                <input value={cardNum} onChange={e=>setCardNum(e.target.value)} placeholder="1234 5678 9012 3456" />
+                <input
+                  value={useSavedCard && savedCard ? savedCard.maskedNumber : cardNum}
+                  onChange={e=>setCardNum(e.target.value)}
+                  placeholder="1234 5678 9012 3456"
+                  readOnly={useSavedCard && Boolean(savedCard)}
+                />
+                {!useSavedCard && cardBrand && <div className="payment-field-hint">{cardBrand}</div>}
+                {!useSavedCard && activeCardNumber && !cardNumberValid && (
+                  <div className="payment-field-error">Enter a valid card number.</div>
+                )}
               </div>
               <div className="form-group">
                 <label>Expiry</label>
-                <input value={cardExp} onChange={e=>setCardExp(e.target.value)} placeholder="MM / YY" />
+                <input
+                  value={useSavedCard && savedCard ? savedCard.expiryDisplay : cardExp}
+                  onChange={e=>setCardExp(e.target.value)}
+                  placeholder="MM / YY"
+                  readOnly={useSavedCard && Boolean(savedCard)}
+                />
+                {!useSavedCard && activeCardExpiry && !expiryValid && (
+                  <div className="payment-field-error">Use a valid future expiry date.</div>
+                )}
               </div>
               <div className="form-group">
                 <label>CVV</label>
                 <input type="password" value={cardCvv} onChange={e=>setCardCvv(e.target.value)} placeholder="123" />
+                {cardCvv && !cvvValid && (
+                  <div className="payment-field-error">Enter a valid CVV.</div>
+                )}
               </div>
             </div>
             <div className="form-group">
               <label>Name on card</label>
-              <input value={cardName} onChange={e=>setCardName(e.target.value)} placeholder="As it appears on your card" />
+              <input
+                value={useSavedCard && savedCard ? savedCard.cardholderName : cardName}
+                onChange={e=>setCardName(e.target.value)}
+                placeholder="As it appears on your card"
+                readOnly={useSavedCard && Boolean(savedCard)}
+              />
+              {!useSavedCard && activeCardName && activeCardName.trim().length < 3 && (
+                <div className="payment-field-error">Enter the full cardholder name.</div>
+              )}
             </div>
             <div className="payment-secure-note">🔒 Secured with 3D Secure &amp; PCI-DSS encryption</div>
+            <div className={`payment-readiness ${paymentReady ? "payment-readiness--ready" : ""}`}>
+              {paymentReady
+                ? "Payment details look good. You can confirm your booking."
+                : "Complete valid payment details to enable a smoother checkout."}
+            </div>
           </div>
+
+          {!useSavedCard && (
+            <label className="remember-card-label">
+              <input type="checkbox" checked={rememberCard} onChange={e=>setRememberCard(e.target.checked)} />
+              <span>Remember this card on this device with the number partially hidden</span>
+            </label>
+          )}
 
           <label className="tcs-label">
             <input type="checkbox" checked={agreed} onChange={e=>setAgreed(e.target.checked)} />

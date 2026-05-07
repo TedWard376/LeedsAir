@@ -13,9 +13,10 @@ import org.jetbrains.exposed.sql.transactions.transaction
 import java.time.LocalDateTime
 
 object ComplaintService {
-    private val json = Json {
-        ignoreUnknownKeys = true
-    }
+    private val json =
+        Json {
+            ignoreUnknownKeys = true
+        }
 
     private const val defaultUserId = 1
 
@@ -35,39 +36,46 @@ object ComplaintService {
         val status: String,
     )
 
-    fun submitComplaint(authorizationHeader: String?, requestBody: String): ComplaintResponse = transaction {
-        val request = json.decodeFromString<ComplaintRequest>(requestBody)
-        require(request.category.isNotBlank()) { "Issue category is required" }
-        require(request.description.isNotBlank()) { "Description is required" }
+    fun submitComplaint(
+        authorizationHeader: String?,
+        requestBody: String,
+    ): ComplaintResponse =
+        transaction {
+            val request = json.decodeFromString<ComplaintRequest>(requestBody)
+            require(request.category.isNotBlank()) { "Issue category is required" }
+            require(request.description.isNotBlank()) { "Description is required" }
 
-        val bookingRow = request.bookingReference.trim()
-            .takeIf { it.isNotBlank() }
-            ?.let { ref ->
-                BookingsTable.selectAll()
-                    .firstOrNull { it[BookingsTable.bookingReference].equals(ref, ignoreCase = true) }
-            }
+            val bookingRow =
+                request.bookingReference.trim()
+                    .takeIf { it.isNotBlank() }
+                    ?.let { ref ->
+                        BookingsTable.selectAll()
+                            .firstOrNull { it[BookingsTable.bookingReference].equals(ref, ignoreCase = true) }
+                    }
 
-        val userId = AuthService.resolveUserIdFromAuthorization(authorizationHeader)
-            ?: bookingRow?.get(BookingsTable.userId)
-            ?: defaultUserId
+            val userId =
+                AuthService.resolveUserIdFromAuthorization(authorizationHeader)
+                    ?: bookingRow?.get(BookingsTable.userId)
+                    ?: defaultUserId
 
-        ensureUser(userId)
+            ensureUser(userId)
 
-        val complaintId = ComplaintsTable.insert { row ->
-            row[ComplaintsTable.userId] = userId
-            row[bookingId] = bookingRow?.get(BookingsTable.id)
-            row[subject] = request.category.trim()
-            row[message] = request.description.trim()
-            row[status] = "open"
-            row[createdAt] = LocalDateTime.now()
-        }[ComplaintsTable.id]
+            val complaintId =
+                ComplaintsTable.insert { row ->
+                    row[ComplaintsTable.userId] = userId
+                    row[bookingId] = bookingRow?.get(BookingsTable.id)
+                    row[subject] = request.category.trim()
+                    row[message] = request.description.trim()
+                    row[status] = "open"
+                    row[createdAt] = LocalDateTime.now()
+                }[ComplaintsTable.id]
 
-        ComplaintResponse(
-            id = complaintId,
-            confirmationNumber = "CMP${complaintId.toString().padStart(6, '0')}",
-            status = "Open",
-        )
-    }
+            ComplaintResponse(
+                id = complaintId,
+                confirmationNumber = "CMP${complaintId.toString().padStart(6, '0')}",
+                status = "Open",
+            )
+        }
 
     private fun ensureUser(userId: Int) {
         val existing = UsersTable.selectAll().any { it[UsersTable.id] == userId }

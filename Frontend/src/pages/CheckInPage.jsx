@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { getBookingByRef, checkIn } from "../services/api";
 import { LoadingSpinner } from "../components/StatusMessages";
 
-export function CheckInPage() {
+export function CheckInPage({ initialLookup, onLookupConsumed }) {
   const [step, setStep] = useState("lookup"); // lookup | confirm | boarding
   const [ref, setRef] = useState("");
   const [lastName, setLastName] = useState("");
@@ -10,6 +10,26 @@ export function CheckInPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [boardingPass, setBoardingPass] = useState(null);
+
+  useEffect(() => {
+    if (!initialLookup?.ref || !initialLookup?.lastName) return;
+
+    setRef(initialLookup.ref);
+    setLastName(initialLookup.lastName);
+    setLoading(true);
+    setError(null);
+
+    getBookingByRef(initialLookup.ref, initialLookup.lastName)
+      .then((data) => {
+        setBooking(data);
+        setStep("confirm");
+      })
+      .catch((err) => setError(err.message))
+      .finally(() => {
+        setLoading(false);
+        onLookupConsumed?.();
+      });
+  }, [initialLookup, onLookupConsumed]);
 
   async function handleLookup(e) {
     e.preventDefault();

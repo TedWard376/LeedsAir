@@ -6,6 +6,7 @@ exposed = "0.57.0"
 hikari = "5.1.0"
 postgres = "42.7.4"
 flyway = "11.3.4"
+ktlint-gradle = "12.1.1"
 
 [libraries]
 ktor-server-core = { module = "io.ktor:ktor-server-core-jvm", version.ref = "ktor" }
@@ -27,3 +28,4 @@ kotlin-test-junit = { module = "org.jetbrains.kotlin:kotlin-test-junit", version
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 ktor = { id = "io.ktor.plugin", version.ref = "ktor" }
+ktlint = { id = "org.jlleitschuh.gradle.ktlint", version.ref = "ktlint-gradle" }

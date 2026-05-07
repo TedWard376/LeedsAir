@@ -11,7 +11,7 @@ data class Airport(
     val isoCountry: String,
     val municipality: String,
     val icaoCode: String,
-    val iataCode: String
+    val iataCode: String,
 )
 
 @Serializable
@@ -19,7 +19,7 @@ data class DestinationDisplay(
     val city: String,
     val code: String,
     val price: Double,
-    val flag: String
+    val flag: String,
 )
 
 @Serializable
@@ -31,7 +31,7 @@ data class Offer(
     val destination: String,
     val imageUrl: String,
     val altText: String,
-    val tripType: String = "Return"
+    val tripType: String = "Return",
 )
 
 @Serializable
@@ -42,7 +42,7 @@ data class HeroSlide(
     val imageUrl: String,
     val altText: String,
     val ctaText: String,
-    val ctaUrl: String
+    val ctaUrl: String,
 )
 
 @Serializable
@@ -51,7 +51,7 @@ data class UserStatus(
     val username: String? = null,
     val loyaltyTier: String? = null,
     val loyaltyPoints: Int = 0,
-    val accessibilityPreferences: Map<String, Boolean> = emptyMap()
+    val accessibilityPreferences: Map<String, Boolean> = emptyMap(),
 )
 
 @Serializable
@@ -59,7 +59,7 @@ data class LegalInfo(
     val cookieAccepted: Boolean = false,
     val privacyUrl: String = "/privacy",
     val termsUrl: String = "/terms",
-    val cookiePolicyUrl: String = "/cookies"
+    val cookiePolicyUrl: String = "/cookies",
 )
 
 @Serializable
@@ -71,5 +71,5 @@ data class HomeResponse(
     val bestOffers: List<Offer>,
     val destinations: List<DestinationDisplay>,
     val legal: LegalInfo,
-    val navigation: Map<String, List<String>>
+    val navigation: Map<String, List<String>>,
 )

@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom"
-import { describe, it, expect, vi } from "vitest"
-import { render, screen, waitFor } from "@testing-library/react"
+import { afterEach, describe, expect, it, vi } from "vitest"
+import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { getSeatPrice, formatPrice, paxLabel, stopsLabel } from "../Utils.js"
 import { FlightCard } from "../components/FlightCard.jsx"
@@ -8,11 +8,11 @@ import { Navbar } from "../components/Navbar.jsx"
 import { AuthProvider } from "../context/AuthContext.jsx"
 import { getFlights, login, createBooking } from "../services/api.js"
 
-const originalFetch = global.fetch
+const originalFetch = globalThis.fetch
 
 afterEach(() => {
   vi.restoreAllMocks()
-  global.fetch = originalFetch
+  globalThis.fetch = originalFetch
   localStorage.clear()
 })
 
@@ -79,7 +79,7 @@ describe("FlightCard", () => {
 describe("Navbar", () => {
   it("shows Login and Register when no user is logged in", () => {
     localStorage.clear()
-    global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => null })
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => null })
     render(
       <AuthProvider>
         <Navbar activePage="home" onNavigate={() => {}} />
@@ -94,7 +94,7 @@ describe("Navbar", () => {
 
 describe("getFlights", () => {
   it("fetches flights from the API and returns the results", async () => {
-    global.fetch = vi.fn().mockResolvedValue({
+    globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true, status: 200,
       json: async () => [{ id: "FL001", flightNumber: "LS101" }],
     })
@@ -106,7 +106,7 @@ describe("getFlights", () => {
 
 describe("login", () => {
   it("throws an error when the backend returns 401", async () => {
-    global.fetch = vi.fn().mockResolvedValue({
+    globalThis.fetch = vi.fn().mockResolvedValue({
       ok: false, status: 401,
       json: async () => ({ message: "Invalid email or password" }),
     })
@@ -117,7 +117,7 @@ describe("login", () => {
 
 describe("createBooking", () => {
   it("posts to /api/bookings and returns the new booking reference", async () => {
-    global.fetch = vi.fn().mockResolvedValue({
+    globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true, status: 201,
       json: async () => ({ bookingReference: "LEEDSABC1", status: "Confirmed" }),
     })
