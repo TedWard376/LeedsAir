@@ -84,7 +84,7 @@ object AirportService {
                             if (layoverMinutes in 60..720) {
                                 val dep = airportsById[leg1.depId]?.get(AirportsTable.code) ?: continue
                                 val arr = airportsById[leg2.arrId]?.get(AirportsTable.code) ?: continue
-                                if (dep != arr && !directMap.getOrDefault(arr, emptySet()).contains(dep)) {
+                                if (dep != arr && directMap[arr]?.contains(dep) != true) {
                                     connectingMap.getOrPut(arr) { mutableSetOf() }.add(dep)
                                 }
                             }
