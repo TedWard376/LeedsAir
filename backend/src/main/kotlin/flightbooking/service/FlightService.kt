@@ -296,7 +296,13 @@ object FlightService {
             else -> 1.0
         }
 
-        return basePrice * timeMultiplier * scarcityMultiplier * weekendMultiplier
+        // Pseudo-random fluctuation based on the date and base price so it's consistent per flight/date
+        val seed = departureDateTime.toLocalDate().toEpochDay() + basePrice.toLong()
+        val random = java.util.Random(seed)
+        // Fluctuate between 0.92 and 1.08 (-8% to +8%) to make daily prices look natural
+        val dailyFluctuationMultiplier = 0.92 + (0.16 * random.nextDouble())
+
+        return basePrice * timeMultiplier * scarcityMultiplier * weekendMultiplier * dailyFluctuationMultiplier
     }
 
     private fun formatDuration(
