@@ -40,29 +40,9 @@ object AirportService {
         
         return transaction {
             val allSchedules = FlightSchedulesTable.selectAll().toList()
-            val airportsById = AirportsTable.selectAll().associateBy { it[AirportsTable.id] }
-            
-            val directMap = mutableMapOf<String, MutableSet<String>>()
-            val activeAirportIds = mutableSetOf<Int>()
-
-            for (sched in allSchedules) {
-                val depId = sched[FlightSchedulesTable.departureAirportId]
-                val arrId = sched[FlightSchedulesTable.arrivalAirportId]
-                activeAirportIds.add(depId)
-                activeAirportIds.add(arrId)
-                
-                val dep = airportsById[depId]?.get(AirportsTable.code) ?: continue
-                val arr = airportsById[arrId]?.get(AirportsTable.code) ?: continue
-                directMap.getOrPut(arr) { mutableSetOf() }.add(dep)
-            }
-
-            // Use real scheduled flights (with actual dates) to determine valid connecting routes.
-            // Group by departure date so we only match legs that genuinely fly on the same calendar day.
-            val connectingMap = mutableMapOf<String, MutableSet<String>>()
-            val allFlights = ScheduledFlightsTable.selectAll().toList()
             val schedulesMapById = allSchedules.associateBy { it[FlightSchedulesTable.id] }
+            val allFlights = ScheduledFlightsTable.selectAll().toList()
 
-            // Build lightweight data class for each real flight with departure/arrival airports
             data class RealFlight(val depId: Int, val arrId: Int, val dep: LocalDateTime, val arr: LocalDateTime)
             val realFlights = allFlights.mapNotNull { row ->
                 val sched = schedulesMapById[row[ScheduledFlightsTable.scheduleId]] ?: return@mapNotNull null
@@ -73,6 +53,24 @@ object AirportService {
                     arr = row[ScheduledFlightsTable.arrivalTime]
                 )
             }
+
+            val airportsById = AirportsTable.selectAll().associateBy { it[AirportsTable.id] }
+            
+            val directMap = mutableMapOf<String, MutableSet<String>>()
+            val activeAirportIds = mutableSetOf<Int>()
+
+            for (flight in realFlights) {
+                activeAirportIds.add(flight.depId)
+                activeAirportIds.add(flight.arrId)
+                
+                val dep = airportsById[flight.depId]?.get(AirportsTable.code) ?: continue
+                val arr = airportsById[flight.arrId]?.get(AirportsTable.code) ?: continue
+                directMap.getOrPut(arr) { mutableSetOf() }.add(dep)
+            }
+
+            // Use real scheduled flights (with actual dates) to determine valid connecting routes.
+            // Group by departure date so we only match legs that genuinely fly on the same calendar day.
+            val connectingMap = mutableMapOf<String, MutableSet<String>>()
 
             val flightsByDate = realFlights.groupBy { it.dep.toLocalDate() }
 
@@ -93,6 +91,10 @@ object AirportService {
                 }
             }
 
+            val hasDeparturesSet = mutableSetOf<String>()
+            for (deps in directMap.values) hasDeparturesSet.addAll(deps)
+            for (deps in connectingMap.values) hasDeparturesSet.addAll(deps)
+
             val result = AirportsTable.selectAll()
                 .filter { it[AirportsTable.id] in activeAirportIds }
                 .map {
@@ -105,7 +107,9 @@ object AirportService {
                         directFrom = directMap[code]?.toList() ?: emptyList(),
                         connectingFrom = connectingMap[code]?.toList() ?: emptyList()
                     )
-                }.sortedWith(compareBy({ getContinentOrder(continentMap[it.code]) }, { it.name }))
+                }
+                .filter { it.code in hasDeparturesSet }
+                .sortedWith(compareBy({ getContinentOrder(continentMap[it.code]) }, { it.name }))
             
             cachedAirports = result
             result

@@ -47,7 +47,7 @@ function useMonthPrices(from, to) {
 }
 
 // ── AirportPicker ─────────────────────────────────────────
-function AirportPicker({ label, value, onChange, exclude, airports = [], requireDepartures }) {
+function AirportPicker({ label, value, onChange, exclude, airports = [] }) {
   const [query,   setQuery]  = useState("");
   const [open,    setOpen]   = useState(false);
   const wrapRef              = useRef(null);
@@ -56,7 +56,6 @@ function AirportPicker({ label, value, onChange, exclude, airports = [], require
   const selected = airports.find((a) => a.code === value);
   const filtered = airports.filter((a) => {
     if (exclude && a.code === exclude) return false;
-    if (requireDepartures && !requireDepartures.has(a.code)) return false;
     if (!query) return true;
     return (
       (a.city && a.city.toLowerCase().includes(query.toLowerCase())) ||
@@ -400,12 +399,6 @@ export function SearchForm({ onSearch }) {
     const tmp = from; setFrom(to); setTo(tmp);
   }
 
-  const hasDeparturesSet = new Set();
-  airports.forEach(a => {
-    if (a.directFrom) a.directFrom.forEach(c => hasDeparturesSet.add(c));
-    if (a.connectingFrom) a.connectingFrom.forEach(c => hasDeparturesSet.add(c));
-  });
-
   return (
     <form className="search-form" onSubmit={handleSubmit}>
       <div className="trip-type-row">
@@ -419,7 +412,7 @@ export function SearchForm({ onSearch }) {
       </div>
 
       <div className="airport-row">
-        <AirportPicker label="From" value={from} onChange={setFrom} exclude={to} airports={airports} requireDepartures={hasDeparturesSet} />
+        <AirportPicker label="From" value={from} onChange={setFrom} exclude={to} airports={airports} />
         <button type="button" className="swap-btn" onClick={swapAirports} title="Swap">⇄</button>
         <AirportPicker label="To"   value={to}   onChange={setTo}   exclude={from} airports={airports} />
       </div>
