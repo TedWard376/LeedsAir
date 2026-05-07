@@ -1,10 +1,10 @@
 package flightbooking
 
 import flightbooking.service.AdminService
+import flightbooking.service.AirportService
 import flightbooking.service.AuthService
 import flightbooking.service.BookingService
 import flightbooking.service.ComplaintService
-import flightbooking.service.AirportService
 import flightbooking.service.FlightService
 import flightbooking.service.HomeService
 import flightbooking.service.LoyaltyService
@@ -319,7 +319,7 @@ fun Application.configureRouting() {
             }
         }
 
-        get("/api/destinations") { //Get all destinations of an airport
+        get("/api/destinations") { // Get all destinations of an airport
             val ref = call.parameters["from"]?.trim()
             try {
                 call.respond(AirportService.returnDestinations(ref))
@@ -328,7 +328,7 @@ fun Application.configureRouting() {
             }
         }
 
-        get("/api/departure-airports") { //Get all available airports
+        get("/api/departure-airports") { // Get all available airports
             try {
                 call.respond(AirportService.returnDepartureAirports())
             } catch (e: IllegalArgumentException) {

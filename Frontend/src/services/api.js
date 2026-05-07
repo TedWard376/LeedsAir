@@ -67,6 +67,8 @@ export async function getProfile() {
 
 // ── Flights ───────────────────────────────────────────────
 let cachedAirports = null;
+let cachedHomeData = null;
+let cachedHomeDataPromise = null;
 export async function getAirports() {
   if (cachedAirports) return cachedAirports;
   cachedAirports = await request("/airports");
@@ -74,7 +76,18 @@ export async function getAirports() {
 }
 
 export async function getHomeData() {
-  return request("/home");
+  if (cachedHomeData) return cachedHomeData;
+  if (!cachedHomeDataPromise) {
+    cachedHomeDataPromise = request("/home")
+      .then((data) => {
+        cachedHomeData = data;
+        return data;
+      })
+      .finally(() => {
+        cachedHomeDataPromise = null;
+      });
+  }
+  return cachedHomeDataPromise;
 }
 
 export async function getFlights(params = {}) {

@@ -3,11 +3,11 @@ package flightbooking.service
 import flightbooking.db.table.AirportsTable
 import flightbooking.db.table.FlightSchedulesTable
 import flightbooking.db.table.ScheduledFlightsTable
-import java.time.LocalDateTime
 import kotlinx.serialization.Serializable
 import org.jetbrains.exposed.sql.andWhere
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
+import java.time.LocalDateTime
 
 @Serializable
 data class AirportDTO(
@@ -18,7 +18,7 @@ data class AirportDTO(
     val directFrom: List<String> = emptyList(),
     val connectingFrom: List<String> = emptyList(),
     val tabIndex: Int = 0,
-    val ariaLabel: String = ""
+    val ariaLabel: String = "",
 )
 
 data class Destination(
@@ -55,33 +55,34 @@ object AirportService {
     fun getAllAirports(): List<AirportDTO> {
         if (cachedAirports != null) return cachedAirports!!
 
-        val continentMap = Airports.associate { it.iata_code to it.continent }
-        
+        val continentMap = AirportLoader.loadFromCsv().associate { airport -> airport.iata_code to airport.continent }
+
         return transaction {
             val allSchedules = FlightSchedulesTable.selectAll().toList()
             val schedulesMapById = allSchedules.associateBy { it[FlightSchedulesTable.id] }
             val allFlights = ScheduledFlightsTable.selectAll().toList()
 
             data class RealFlight(val depId: Int, val arrId: Int, val dep: LocalDateTime, val arr: LocalDateTime)
-            val realFlights = allFlights.mapNotNull { row ->
-                val sched = schedulesMapById[row[ScheduledFlightsTable.scheduleId]] ?: return@mapNotNull null
-                RealFlight(
-                    depId = sched[FlightSchedulesTable.departureAirportId],
-                    arrId = sched[FlightSchedulesTable.arrivalAirportId],
-                    dep = row[ScheduledFlightsTable.departureTime],
-                    arr = row[ScheduledFlightsTable.arrivalTime]
-                )
-            }
+            val realFlights =
+                allFlights.mapNotNull { row ->
+                    val sched = schedulesMapById[row[ScheduledFlightsTable.scheduleId]] ?: return@mapNotNull null
+                    RealFlight(
+                        depId = sched[FlightSchedulesTable.departureAirportId],
+                        arrId = sched[FlightSchedulesTable.arrivalAirportId],
+                        dep = row[ScheduledFlightsTable.departureTime],
+                        arr = row[ScheduledFlightsTable.arrivalTime],
+                    )
+                }
 
             val airportsById = AirportsTable.selectAll().associateBy { it[AirportsTable.id] }
-            
+
             val directMap = mutableMapOf<String, MutableSet<String>>()
             val activeAirportIds = mutableSetOf<Int>()
 
             for (flight in realFlights) {
                 activeAirportIds.add(flight.depId)
                 activeAirportIds.add(flight.arrId)
-                
+
                 val dep = airportsById[flight.depId]?.get(AirportsTable.code) ?: continue
                 val arr = airportsById[flight.arrId]?.get(AirportsTable.code) ?: continue
                 directMap.getOrPut(arr) { mutableSetOf() }.add(dep)
@@ -114,67 +115,75 @@ object AirportService {
             for (deps in directMap.values) hasDeparturesSet.addAll(deps)
             for (deps in connectingMap.values) hasDeparturesSet.addAll(deps)
 
-            val result = AirportsTable.selectAll()
-                .filter { it[AirportsTable.id] in activeAirportIds }
-                .map {
-                    val code = it[AirportsTable.code]
-                    AirportDTO(
-                        code = code,
-                        name = it[AirportsTable.name] ?: "",
-                        city = it[AirportsTable.city],
-                        country = it[AirportsTable.country],
-                        directFrom = directMap[code]?.toList() ?: emptyList(),
-                        connectingFrom = connectingMap[code]?.toList() ?: emptyList(),
-                        tabIndex = 0,
-                        ariaLabel = "Select ${it[AirportsTable.name]} airport in ${it[AirportsTable.city] ?: "Unknown City"}"
+            val result =
+                AirportsTable.selectAll()
+                    .filter { it[AirportsTable.id] in activeAirportIds }
+                    .map {
+                        val code = it[AirportsTable.code]
+                        AirportDTO(
+                            code = code,
+                            name = it[AirportsTable.name] ?: "",
+                            city = it[AirportsTable.city],
+                            country = it[AirportsTable.country],
+                            directFrom = directMap[code]?.toList() ?: emptyList(),
+                            connectingFrom = connectingMap[code]?.toList() ?: emptyList(),
+                            tabIndex = 0,
+                            ariaLabel = "Select ${it[AirportsTable.name]} airport in ${it[AirportsTable.city] ?: "Unknown City"}",
+                        )
+                    }
+                    .filter { it.code in hasDeparturesSet }
+                    .sortedWith(
+                        compareBy<AirportDTO>(
+                            { getContinentOrder(continentMap[it.code] ?: "") },
+                            { airport -> airport.name },
+                        ),
                     )
-                }
-                .filter { it.code in hasDeparturesSet }
-                .sortedWith(compareBy({ getContinentOrder(continentMap[it.code]) }, { it.name }))
-            
+
             cachedAirports = result
             result
         }
     }
-    fun returnDepartureAirports(): List<Departure> { //Return all departure airports
+
+    fun returnDepartureAirports(): List<Departure> { // Return all departure airports
         val schedules = FlightScheduleLoader.loadFromCsv()
         val airports = AirportLoader.loadFromCsv()
-        val airportMap = airports.associateBy { it.iata_code.trim().uppercase() } //Create a hashmap for airports
+        val airportMap = airports.associateBy { it.iata_code.trim().uppercase() } // Create a hashmap for airports
         val departures = mutableSetOf<Departure>()
 
         for (schedule in schedules) {
             val airport = airportMap[schedule.from.trim().uppercase()] ?: continue
-            departures.add(Departure(airport.iata_code.trim().uppercase(), airport.name.trim(), airport.municipality.trim(), airport.iso_country.trim().uppercase(),airport.iso_country.trim().uppercase()))
+            departures.add(Departure(airport.iata_code.trim().uppercase(), airport.name.trim(), airport.municipality.trim(), airport.iso_country.trim().uppercase(), airport.iso_country.trim().uppercase()))
         }
 
         return departures.toList()
     }
 
-    fun returnDestinations(from: String?): List<Destination> = transaction { //Return possible destination from specified airport
-        val normalisedFrom = from?.trim()?.uppercase().takeUnless { it.isNullOrBlank() } //Normalise from String
-        val airportsById = AirportsTable.selectAll().associateBy { it[AirportsTable.id] }
-        val airportsByCode = AirportsTable.selectAll().associateBy { it[AirportsTable.code].uppercase() }
-        val departureAirportId = normalisedFrom?.let { code -> airportsByCode[code]?.get(AirportsTable.id) }
-        var scheduleQuery = FlightSchedulesTable.selectAll()
+    fun returnDestinations(from: String?): List<Destination> =
+        transaction { // Return possible destination from specified airport
+            val normalisedFrom = from?.trim()?.uppercase().takeUnless { it.isNullOrBlank() } // Normalise from String
+            val airportsById = AirportsTable.selectAll().associateBy { it[AirportsTable.id] }
+            val airportsByCode = AirportsTable.selectAll().associateBy { it[AirportsTable.code].uppercase() }
+            val departureAirportId = normalisedFrom?.let { code -> airportsByCode[code]?.get(AirportsTable.id) }
+            var scheduleQuery = FlightSchedulesTable.selectAll()
 
-        if (departureAirportId != null) {
-            scheduleQuery = scheduleQuery.andWhere { FlightSchedulesTable.departureAirportId eq departureAirportId }
+            if (departureAirportId != null) {
+                scheduleQuery = scheduleQuery.andWhere { FlightSchedulesTable.departureAirportId eq departureAirportId }
+            }
+
+            val schedules = scheduleQuery.toList()
+
+            return@transaction schedules.mapNotNull { schedule -> // Returns depId: Int, arrId: Int, depAirport: String, arrAirport: String
+                val depId = schedule[FlightSchedulesTable.departureAirportId]
+                val arrId = schedule[FlightSchedulesTable.arrivalAirportId]
+                val depAirport = airportsById[depId] ?: return@mapNotNull null
+                val arrAirport = airportsById[arrId] ?: return@mapNotNull null
+
+                Destination(
+                    departureAirport = depAirport[AirportsTable.code],
+                    departureAirportId = depId,
+                    arrivalAirport = arrAirport[AirportsTable.code],
+                    arrivalAirportId = arrId,
+                )
+            }.distinctBy { it.departureAirportId to it.arrivalAirportId } // Prevents duplicate flights
         }
-
-        val schedules = scheduleQuery.toList()
-
-        return@transaction schedules.mapNotNull { schedule -> //Returns depId: Int, arrId: Int, depAirport: String, arrAirport: String
-            val depId = schedule[FlightSchedulesTable.departureAirportId]
-            val arrId = schedule[FlightSchedulesTable.arrivalAirportId]
-            val depAirport = airportsById[depId] ?: return@mapNotNull null
-            val arrAirport = airportsById[arrId] ?: return@mapNotNull null
-
-            Destination(
-                departureAirport = depAirport[AirportsTable.code],
-                departureAirportId = depId,
-                arrivalAirport = arrAirport[AirportsTable.code],
-                arrivalAirportId = arrId
-            )
-        }.distinctBy { it.departureAirportId to it.arrivalAirportId }  //Prevents duplicate flights
-    }
 }

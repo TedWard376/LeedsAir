@@ -3,27 +3,16 @@ import { SearchForm } from "../components/SearchForm";
 import { getHomeData } from "../services/api";
 
 const FALLBACK = [
-  { code: "BCN", city: "Barcelona", flag: "🇪🇸", price: 89 },
-  { code: "AMS", city: "Amsterdam", flag: "🇳🇱", price: 65 },
-  { code: "DXB", city: "Dubai", flag: "🇦🇪", price: 299 },
-  { code: "CDG", city: "Paris", flag: "🇫🇷", price: 74 },
+  { code: "BCN", city: "Barcelona", flag: "", price: 89 },
+  { code: "AMS", city: "Amsterdam", flag: "", price: 65 },
+  { code: "DXB", city: "Dubai", flag: "", price: 299 },
+  { code: "CDG", city: "Paris", flag: "", price: 74 },
 ];
 
-const INSPIRATION_CARDS = [
-  { title: "Weekend city break", route: "LBA to Amsterdam", blurb: "Short-haul favourites with easy Friday-to-Sunday timings.", to: "AMS" },
-  { title: "Best for sunshine", route: "LBA to Barcelona", blurb: "Warm-weather escapes that still feel affordable.", to: "BCN" },
-  { title: "Long-haul standout", route: "LBA to Dubai", blurb: "A higher-value trip when you want a bigger experience.", to: "DXB" },
-];
-
-function destCode(routeStr) {
-  const parts = routeStr.split(/→|->/).map((value) => value.trim());
-  return parts[1] || null;
-}
-
-function buildSearchPayload(to, travelClass = "economy") {
+function buildSearchPayload(from, to, travelClass = "economy") {
   return {
     tripType: "one-way",
-    from: "LBA",
+    from,
     to,
     departureDate: "",
     travelClass,
@@ -42,11 +31,10 @@ function buildInspirationBlurb(city, index) {
   return blurbs[index] || `Start with ${city} if you want an easy place to begin searching.`;
 }
 
-// Removed dead code getDestinationCard
-
 export function HomePage({ onSearch, confirmedBooking, onDismissConfirmation }) {
   const [destinations, setDestinations] = useState([]);
   const [loading, setLoading] = useState(true);
+  const initialFrom = "";
 
   useEffect(() => {
     let cancelled = false;
@@ -54,11 +42,13 @@ export function HomePage({ onSearch, confirmedBooking, onDismissConfirmation }) 
     async function loadDestinations() {
       try {
         const homeData = await getHomeData();
-        if (!cancelled && homeData && homeData.destinations) {
-          setDestinations(homeData.destinations.map(c => ({
-            ...c,
-            flag: "" // We no longer use flag emoji as per user request
-          })));
+        if (!cancelled) {
+          setDestinations(
+            (homeData?.destinations || FALLBACK).map((destination) => ({
+              ...destination,
+              flag: "",
+            })),
+          );
           setLoading(false);
         }
       } catch {
@@ -70,34 +60,41 @@ export function HomePage({ onSearch, confirmedBooking, onDismissConfirmation }) 
     }
 
     loadDestinations();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  const bestValueDestination = useMemo(() => {
-    return [...destinations]
-      .filter((destination) => typeof destination.price === "number")
-      .sort((a, b) => a.price - b.price)[0] || null;
-  }, [destinations]);
+  const bestValueDestination = useMemo(
+    () =>
+      [...destinations]
+        .filter((destination) => typeof destination.price === "number")
+        .sort((a, b) => a.price - b.price)[0] || null,
+    [destinations],
+  );
 
-  const discoveryCodes = useMemo(() => {
-    return destinations.slice(0, 4).map((destination) => destination.code);
-  }, [destinations]);
+  const discoveryCodes = useMemo(
+    () => destinations.slice(0, 4).map((destination) => destination.code),
+    [destinations],
+  );
 
-  const inspirationCards = useMemo(() => {
-    return destinations.slice(0, 3).map((destination, index) => ({
-      title: index === 0 ? "Popular right now" : index === 1 ? "Good for a city break" : "Worth exploring",
-      route: `LBA to ${destination.city}`,
-      blurb: buildInspirationBlurb(destination.city, index),
-      to: destination.code,
-    }));
-  }, [destinations]);
+  const inspirationCards = useMemo(
+    () =>
+      destinations.slice(0, 3).map((destination, index) => ({
+        title: index === 0 ? "Popular right now" : index === 1 ? "Good for a city break" : "Worth exploring",
+        route: `${initialFrom} to ${destination.city}`,
+        blurb: buildInspirationBlurb(destination.city, index),
+        to: destination.code,
+      })),
+    [destinations, initialFrom],
+  );
 
   return (
     <div className="page home-page">
       <div className="hero">
         <h1 className="hero-title">Where will you fly next?</h1>
         <p className="hero-subtitle">Search hundreds of routes. Book in minutes.</p>
-        <SearchForm onSearch={onSearch} />
+        <SearchForm onSearch={onSearch} initialFrom={initialFrom} />
       </div>
 
       <div className="home-destinations">
@@ -114,7 +111,7 @@ export function HomePage({ onSearch, confirmedBooking, onDismissConfirmation }) 
             <div
               key={destination.code}
               className={`dest-card ${loading ? "dest-card--loading" : ""}`}
-              onClick={() => onSearch(buildSearchPayload(destination.code))}
+              onClick={() => onSearch(buildSearchPayload(initialFrom, destination.code))}
               title={`Search flights to ${destination.city}`}
             >
               <span className="dest-rank">#{index + 1}</span>
@@ -153,7 +150,7 @@ export function HomePage({ onSearch, confirmedBooking, onDismissConfirmation }) 
           </p>
           <button
             className="quick-action-btn"
-            onClick={() => bestValueDestination && onSearch(buildSearchPayload(bestValueDestination.code))}
+            onClick={() => bestValueDestination && onSearch(buildSearchPayload(initialFrom, bestValueDestination.code))}
             disabled={!bestValueDestination}
           >
             Explore best value
@@ -166,7 +163,7 @@ export function HomePage({ onSearch, confirmedBooking, onDismissConfirmation }) 
           <p>Use the destination ideas below to jump straight into a search without filling every field first.</p>
           <div className="discovery-chip-row">
             {discoveryCodes.map((code) => (
-              <button key={code} className="discovery-chip" onClick={() => onSearch(buildSearchPayload(code))}>
+              <button key={code} className="discovery-chip" onClick={() => onSearch(buildSearchPayload(initialFrom, code))}>
                 {code}
               </button>
             ))}
@@ -187,7 +184,7 @@ export function HomePage({ onSearch, confirmedBooking, onDismissConfirmation }) 
               <span className="booking-card-eyebrow">{card.route}</span>
               <h3>{card.title}</h3>
               <p>{card.blurb}</p>
-              <button className="quick-action-btn" onClick={() => onSearch(buildSearchPayload(card.to))}>
+              <button className="quick-action-btn" onClick={() => onSearch(buildSearchPayload(initialFrom, card.to))}>
                 Search this route
               </button>
             </div>
