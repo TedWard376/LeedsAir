@@ -8,6 +8,7 @@ import {
 import { LoadingSpinner, ErrorMessage } from "../components/StatusMessages";
 
 const STATUS_FILTERS = ["All", "Confirmed", "Cancelled", "Pending", "CheckedIn"];
+const BOOKINGS_PER_PAGE = 20;
 
 function exportCSV(rows, filename) {
   if (!rows.length) return;
@@ -109,6 +110,7 @@ export function AdminDashboardPage({ onNavigate }) {
   const [dateFilter, setDateFilter] = useState("");
   const [routeFilter, setRouteFilter] = useState("");
   const [expandedId, setExpandedId] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
 
   async function refreshDashboardData(includeReports = false) {
     const [bookingsData, reportsData] = await Promise.all([
@@ -226,6 +228,23 @@ export function AdminDashboardPage({ onNavigate }) {
       .map((request) => ({ booking, request }))
   ), [bookings]);
 
+  useEffect(() => {
+    setCurrentPage(1);
+    setExpandedId(null);
+  }, [statusFilter, search, dateFilter, routeFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / BOOKINGS_PER_PAGE));
+  const paginatedFiltered = useMemo(() => {
+    const start = (currentPage - 1) * BOOKINGS_PER_PAGE;
+    return filtered.slice(start, start + BOOKINGS_PER_PAGE);
+  }, [currentPage, filtered]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
   const uniqueRoutes = useMemo(() => {
     const routeSet = new Set();
     bookings.forEach((booking) => {
@@ -339,7 +358,8 @@ export function AdminDashboardPage({ onNavigate }) {
 
             <div className="admin-results-bar">
               <span className="admin-results-count">
-                Showing <strong>{filtered.length}</strong> of <strong>{bookings.length}</strong> bookings
+                Showing <strong>{paginatedFiltered.length}</strong> of <strong>{filtered.length}</strong> filtered bookings
+                {" "}from <strong>{bookings.length}</strong> total
               </span>
               <button
                 className="export-btn"
@@ -348,6 +368,30 @@ export function AdminDashboardPage({ onNavigate }) {
                 Export CSV
               </button>
             </div>
+
+            {filtered.length > BOOKINGS_PER_PAGE && (
+              <div className="admin-results-bar" style={{ marginTop: "-0.75rem" }}>
+                <span className="admin-results-count">
+                  Page <strong>{currentPage}</strong> of <strong>{totalPages}</strong>
+                </span>
+                <div style={{ display: "flex", gap: "0.75rem" }}>
+                  <button
+                    className="admin-clear-btn"
+                    onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                    disabled={currentPage === 1}
+                  >
+                    Previous
+                  </button>
+                  <button
+                    className="admin-clear-btn"
+                    onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                    disabled={currentPage === totalPages}
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
 
             <div className="admin-table-wrapper">
               <div className="admin-table-header">
@@ -364,7 +408,7 @@ export function AdminDashboardPage({ onNavigate }) {
                 <div className="empty-state"><p>No bookings match your filters.</p></div>
               )}
 
-              {filtered.map((booking) => (
+              {paginatedFiltered.map((booking) => (
                 <div key={booking.id || booking.bookingReference}>
                   <div
                     className="admin-table-row admin-table-row--clickable"

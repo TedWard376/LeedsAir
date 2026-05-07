@@ -55,7 +55,7 @@ object AirportService {
     fun getAllAirports(): List<AirportDTO> {
         if (cachedAirports != null) return cachedAirports!!
 
-        val continentMap = Airports.associate { it.iata_code to it.continent }
+        val continentMap = AirportLoader.loadFromCsv().associate { airport -> airport.iata_code to airport.continent }
 
         return transaction {
             val allSchedules = FlightSchedulesTable.selectAll().toList()
@@ -132,7 +132,12 @@ object AirportService {
                         )
                     }
                     .filter { it.code in hasDeparturesSet }
-                    .sortedWith(compareBy({ getContinentOrder(continentMap[it.code]) }, { it.name }))
+                    .sortedWith(
+                        compareBy<AirportDTO>(
+                            { getContinentOrder(continentMap[it.code] ?: "") },
+                            { airport -> airport.name },
+                        ),
+                    )
 
             cachedAirports = result
             result

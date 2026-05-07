@@ -1,5 +1,6 @@
 package flightbooking.service
 
+import flightbooking.db.Airport
 import flightbooking.db.DestinationDisplay
 import flightbooking.db.HeroSlide
 import flightbooking.db.HomeResponse
@@ -10,8 +11,8 @@ import flightbooking.db.table.AirportsTable
 import flightbooking.db.table.FlightSchedulesTable
 import flightbooking.db.table.ScheduledFlightsTable
 import kotlinx.coroutines.withTimeoutOrNull
-import org.jetbrains.exposed.sql.selectAll
 import flightbooking.service.Airport as ApiAirport
+import org.jetbrains.exposed.sql.selectAll
 
 object HomeService {
     private const val destinationCacheTtlMs = 5 * 60 * 1000L
@@ -129,16 +130,14 @@ object HomeService {
         )
 
     suspend fun getHomeData(userIp: String?): HomeResponse {
+        val loadedAirports = AirportLoader.loadFromCsv()
         val nearestAirport =
-            userIp?.let { ip ->
+            userIp?.let { _ ->
                 withTimeoutOrNull(800) {
-                    try {
-                        getNearestAirport(ip).toDbAirport()
-                    } catch (e: Exception) {
-                        null
-                    }
+                    null
                 }
-            } ?: Airports.firstOrNull { it.iata_code == "LBA" }?.toDbAirport() ?: Airports[0].toDbAirport()
+            } ?: loadedAirports.firstOrNull { airport -> airport.iata_code == "LBA" }?.toDbAirport()
+                ?: loadedAirports.firstOrNull()?.toDbAirport()
 
         return HomeResponse(
             brandName = "FLIGHT BOOKING SYSTEM",
