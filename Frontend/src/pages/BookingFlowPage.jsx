@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "../context/AuthContext";
 import { createBooking, login, register } from "../services/api";
 import { RouteMap } from "../components/RouteMap";
@@ -364,6 +364,7 @@ function getAgeError(dateOfBirth, isLeadPassenger) {
 export function BookingFlowPage({ flight, onNavigate, onComplete }) {
   const { user } = useAuth();
   const [step, setStep] = useState(0);
+  const flowStartRef = useRef(null);
   const hasFlight = Boolean(flight);
   const [passengers, setPassengers] = useState(() => buildPassengers(flight, user));
   const [paxIdx,     setPaxIdx]     = useState(0);
@@ -418,6 +419,12 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
   const activeCardNumber = useSavedCard && savedCard ? savedCard.maskedNumber : cardNum;
   const activeCardName = useSavedCard && savedCard ? savedCard.cardholderName : cardName;
   const activeCardExpiry = useSavedCard && savedCard ? savedCard.expiryDisplay : cardExp;
+
+  useEffect(() => {
+    if (step === 1 && flowStartRef.current) {
+      flowStartRef.current.focus();
+    }
+  }, [step]);
   const cardBrand = useSavedCard && savedCard ? "Saved card" : detectCardBrand(activeCardNumber);
   const cardNumberValid = useSavedCard && savedCard ? true : isValidCardNumber(activeCardNumber);
   const expiryValid = useSavedCard && savedCard ? true : isValidExpiry(activeCardExpiry);
@@ -588,6 +595,7 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
         <h1 className="visually-hidden">Complete your booking</h1>
         <div className="booking-flow-stepper-bar"><FlowStepper step={1} /></div>
         <div className="booking-flow-body"><div className="flow-step-body">
+          <div ref={flowStartRef} tabIndex="-1" />
           <h2 className="flow-step-title">Passenger Details</h2>
 
           {/* Passenger tabs */}

@@ -34,7 +34,7 @@ function buildInspirationBlurb(city, index) {
 export function HomePage({ onSearch, confirmedBooking, onDismissConfirmation }) {
   const [destinations, setDestinations] = useState([]);
   const [loading, setLoading] = useState(true);
-  const initialFrom = "";
+  const initialFrom = "LBA";
 
   useEffect(() => {
     let cancelled = false;
