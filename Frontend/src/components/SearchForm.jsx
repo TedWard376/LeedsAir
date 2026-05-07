@@ -78,6 +78,20 @@ function AirportPicker({ label, value, onChange, exclude, airports = [] }) {
   });
 
   useEffect(() => {
+    const fetchAirports = async () => {
+      try {
+        const res = await fetch("/api/airports");
+        const data = await res.json();
+        setAIRPORTS(data);
+      } catch (err) {
+        console.error("Failed to load airports:", err);
+      }
+    };
+
+    fetchAirports();
+  }, []);
+
+  useEffect(() => {
     function handle(e) {
       if (wrapRef.current && !wrapRef.current.contains(e.target)) { setOpen(false); setQuery(""); }
     }
