@@ -35,8 +35,9 @@ export function LoginPage({ onNavigate }) {
 
         <form onSubmit={handleSubmit} className="auth-form">
           <div className="form-group">
-            <label>Email</label>
+            <label htmlFor="login-email">Email</label>
             <input
+              id="login-email"
               type="email"
               placeholder="your@email.com"
               value={email}
@@ -45,8 +46,9 @@ export function LoginPage({ onNavigate }) {
             />
           </div>
           <div className="form-group">
-            <label>Password</label>
+            <label htmlFor="login-password">Password</label>
             <input
+              id="login-password"
               type="password"
               placeholder="••••••••"
               value={password}

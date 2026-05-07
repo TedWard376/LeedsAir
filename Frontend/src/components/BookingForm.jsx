@@ -43,8 +43,9 @@ export function BookingForm({ flight, onSubmit, submitting, submitError, onCance
 
         <div className="form-row">
           <div className="form-group">
-            <label>First Name</label>
+            <label htmlFor="booking-first-name">First Name</label>
             <input
+              id="booking-first-name"
               name="firstName"
               placeholder="First name"
               value={form.firstName}
@@ -53,8 +54,9 @@ export function BookingForm({ flight, onSubmit, submitting, submitError, onCance
             />
           </div>
           <div className="form-group">
-            <label>Last Name</label>
+            <label htmlFor="booking-last-name">Last Name</label>
             <input
+              id="booking-last-name"
               name="lastName"
               placeholder="Last name"
               value={form.lastName}
@@ -66,8 +68,9 @@ export function BookingForm({ flight, onSubmit, submitting, submitError, onCance
 
         <div className="form-row">
           <div className="form-group">
-            <label>Date of Birth</label>
+            <label htmlFor="booking-date-of-birth">Date of Birth</label>
             <input
+              id="booking-date-of-birth"
               type="date"
               name="dateOfBirth"
               value={form.dateOfBirth}
@@ -76,8 +79,9 @@ export function BookingForm({ flight, onSubmit, submitting, submitError, onCance
             />
           </div>
           <div className="form-group">
-            <label>Passport Number</label>
+            <label htmlFor="booking-passport-number">Passport Number</label>
             <input
+              id="booking-passport-number"
               name="passportNumber"
               placeholder="e.g. 123456789"
               value={form.passportNumber}
@@ -89,8 +93,9 @@ export function BookingForm({ flight, onSubmit, submitting, submitError, onCance
 
         <div className="form-row">
           <div className="form-group">
-            <label>Email</label>
+            <label htmlFor="booking-email">Email</label>
             <input
+              id="booking-email"
               type="email"
               name="email"
               placeholder="your@email.com"
@@ -100,8 +105,9 @@ export function BookingForm({ flight, onSubmit, submitting, submitError, onCance
             />
           </div>
           <div className="form-group">
-            <label>Phone</label>
+            <label htmlFor="booking-phone">Phone</label>
             <input
+              id="booking-phone"
               type="tel"
               name="phone"
               placeholder="+44 7700 000000"

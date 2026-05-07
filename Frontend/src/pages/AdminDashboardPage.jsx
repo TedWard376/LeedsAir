@@ -256,6 +256,7 @@ export function AdminDashboardPage({ onNavigate }) {
 
   return (
     <div className="page admin-page">
+      <h1 className="visually-hidden">Admin Dashboard</h1>
       <div className="admin-topbar">
         <div className="admin-brand">
           <span>Admin</span>
@@ -309,20 +310,26 @@ export function AdminDashboardPage({ onNavigate }) {
             )}
 
             <div className="admin-filters-bar">
+              <label className="visually-hidden" htmlFor="admin-booking-search">Search bookings</label>
               <input
+                id="admin-booking-search"
                 className="admin-search"
                 placeholder="Search reference, passenger, flight no..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
+              <label className="visually-hidden" htmlFor="admin-date-filter">Filter by departure date</label>
               <input
+                id="admin-date-filter"
                 type="date"
                 className="admin-date-filter"
                 value={dateFilter}
                 onChange={(e) => setDateFilter(e.target.value)}
                 title="Filter by departure date"
               />
+              <label className="visually-hidden" htmlFor="admin-route-filter">Filter by route</label>
               <select
+                id="admin-route-filter"
                 className="admin-route-filter"
                 value={routeFilter}
                 onChange={(e) => setRouteFilter(e.target.value)}
@@ -537,7 +544,7 @@ export function AdminDashboardPage({ onNavigate }) {
         {!loading && !error && tab === "modifications" && (
           <div className="modifications-section">
             <div style={{ marginBottom: "2rem" }}>
-              <h3 style={{ marginBottom: "1rem" }}>Change Tracking Summary</h3>
+              <h2 style={{ marginBottom: "1rem" }}>Change Tracking Summary</h2>
               <div className="admin-metrics">
                 <MetricCard icon="Changes" value={modifications.length} label="Pending Changes" />
                 <MetricCard icon="Cancel" value={bookings.filter((booking) => booking.status === "Cancelled").length} label="Cancellations" />
@@ -546,7 +553,7 @@ export function AdminDashboardPage({ onNavigate }) {
               </div>
             </div>
 
-            <h2>Modification Requests</h2>
+            <h3>Modification Requests</h3>
             <p className="section-subtitle">
               Bookings with pending change requests or awaiting admin approval.
             </p>
@@ -595,7 +602,9 @@ export function AdminDashboardPage({ onNavigate }) {
                       <p className="admin-modification-description">
                         {request.description || "No customer note was provided for this request."}
                       </p>
+                      <label htmlFor={`admin-note-${request.id}`} className="form-group label">Admin note</label>
                       <textarea
+                        id={`admin-note-${request.id}`}
                         className="admin-note-input"
                         rows={3}
                         placeholder="Optional admin note for this decision"
