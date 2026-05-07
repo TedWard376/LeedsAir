@@ -46,7 +46,9 @@ data class FlightResponse(
     val duration: String,
     val stops: Int,
     val price: Int,
-    val availableSeats: Int
+    val availableSeats: Int,
+    val tabIndex: Int = 0,
+    val ariaLabel: String = ""
 )
 
 object FlightService {
@@ -210,7 +212,9 @@ object FlightService {
                                     duration = formatDuration(leg1[ScheduledFlightsTable.departureTime], leg2[ScheduledFlightsTable.arrivalTime]),
                                     stops = 1,
                                     price = (p1 + p2).roundToInt(),
-                                    availableSeats = minOf(leg1Available, leg2Available)
+                                    availableSeats = minOf(leg1Available, leg2Available),
+                                    tabIndex = 0,
+                                    ariaLabel = "Flight from $depCode to $arrCode with 1 stop in $midCode, Price ${(p1 + p2).roundToInt()} pounds"
                                 )
                             )
                         }
@@ -251,7 +255,9 @@ object FlightService {
             duration = formatDuration(departureDateTime, arrivalDateTime),
             stops = schedule[FlightSchedulesTable.stops],
             price = dynamicPrice.roundToInt(),
-            availableSeats = availableSeats
+            availableSeats = availableSeats,
+            tabIndex = 0,
+            ariaLabel = "Direct flight from $departureCode to $arrivalCode, Price ${dynamicPrice.roundToInt()} pounds"
         )
     }
 

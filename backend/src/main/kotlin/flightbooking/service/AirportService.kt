@@ -15,7 +15,9 @@ data class AirportDTO(
     val city: String?,
     val country: String?,
     val directFrom: List<String> = emptyList(),
-    val connectingFrom: List<String> = emptyList()
+    val connectingFrom: List<String> = emptyList(),
+    val tabIndex: Int = 0,
+    val ariaLabel: String = ""
 )
 
 object AirportService {
@@ -105,7 +107,9 @@ object AirportService {
                         city = it[AirportsTable.city],
                         country = it[AirportsTable.country],
                         directFrom = directMap[code]?.toList() ?: emptyList(),
-                        connectingFrom = connectingMap[code]?.toList() ?: emptyList()
+                        connectingFrom = connectingMap[code]?.toList() ?: emptyList(),
+                        tabIndex = 0,
+                        ariaLabel = "Select ${it[AirportsTable.name]} airport in ${it[AirportsTable.city] ?: "Unknown City"}"
                     )
                 }
                 .filter { it.code in hasDeparturesSet }
