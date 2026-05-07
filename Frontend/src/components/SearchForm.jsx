@@ -1,100 +1,90 @@
-import { useState, useRef, useEffect } from "react";
-import { buildApiUrl } from "../services/api";
-
-// ── Airport data ──────────────────────────────────────────
-const AIRPORTS = [
-  { code: "LBA", name: "Leeds Bradford Airport",       city: "Leeds",       country: "UK",          flag: "🇬🇧" },
-  { code: "LHR", name: "Heathrow Airport",              city: "London",      country: "UK",          flag: "🇬🇧" },
-  { code: "LGW", name: "Gatwick Airport",               city: "London",      country: "UK",          flag: "🇬🇧" },
-  { code: "MAN", name: "Manchester Airport",            city: "Manchester",  country: "UK",          flag: "🇬🇧" },
-  { code: "EDI", name: "Edinburgh Airport",             city: "Edinburgh",   country: "UK",          flag: "🇬🇧" },
-  { code: "BHX", name: "Birmingham Airport",            city: "Birmingham",  country: "UK",          flag: "🇬🇧" },
-  { code: "BRS", name: "Bristol Airport",               city: "Bristol",     country: "UK",          flag: "🇬🇧" },
-  { code: "NCL", name: "Newcastle Airport",             city: "Newcastle",   country: "UK",          flag: "🇬🇧" },
-  { code: "AMS", name: "Amsterdam Schiphol",            city: "Amsterdam",   country: "Netherlands", flag: "🇳🇱" },
-  { code: "CDG", name: "Charles de Gaulle Airport",    city: "Paris",       country: "France",      flag: "🇫🇷" },
-  { code: "BCN", name: "Barcelona El Prat",             city: "Barcelona",   country: "Spain",       flag: "🇪🇸" },
-  { code: "MAD", name: "Adolfo Suarez Madrid-Barajas", city: "Madrid",      country: "Spain",       flag: "🇪🇸" },
-  { code: "FCO", name: "Leonardo da Vinci Airport",    city: "Rome",        country: "Italy",       flag: "🇮🇹" },
-  { code: "MXP", name: "Milan Malpensa Airport",       city: "Milan",       country: "Italy",       flag: "🇮🇹" },
-  { code: "FRA", name: "Frankfurt Airport",             city: "Frankfurt",   country: "Germany",     flag: "🇩🇪" },
-  { code: "MUC", name: "Munich Airport",                city: "Munich",      country: "Germany",     flag: "🇩🇪" },
-  { code: "DXB", name: "Dubai International Airport",  city: "Dubai",       country: "UAE",         flag: "🇦🇪" },
-  { code: "JFK", name: "John F. Kennedy Airport",      city: "New York",    country: "USA",         flag: "🇺🇸" },
-  { code: "LAX", name: "Los Angeles Airport",          city: "Los Angeles", country: "USA",         flag: "🇺🇸" },
-  { code: "DUB", name: "Dublin Airport",               city: "Dublin",      country: "Ireland",     flag: "🇮🇪" },
-  { code: "CPH", name: "Copenhagen Airport",           city: "Copenhagen",  country: "Denmark",     flag: "🇩🇰" },
-  { code: "LIS", name: "Humberto Delgado Airport",     city: "Lisbon",      country: "Portugal",    flag: "🇵🇹" },
-  { code: "ATH", name: "Athens International Airport", city: "Athens",      country: "Greece",      flag: "🇬🇷" },
-];
+import { useState, useRef, useEffect, useMemo } from "react";
+import { buildApiUrl, getAirports } from "../services/api";
 
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const DAYS   = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 
 // ── Hook: fetch lowest prices per day for a route + month ─
-function useMonthPrices(from, to, year, month) {
+function useMonthPrices(from, to) {
   const [prices,  setPrices]  = useState({}); // { "2026-04-15": 89, ... }
-  const [loading, setLoading] = useState(false);
-  const routeReady = Boolean(from && to);
+  const [loadedRouteKey, setLoadedRouteKey] = useState("");
+  const hasRoute = Boolean(from && to);
+  const routeKey = hasRoute ? `${from}-${to}` : "";
 
   useEffect(() => {
-    if (!routeReady) return;
+    if (!hasRoute) return;
     let cancelled = false;
-    async function fetchMonthPrices() {
-      setLoading(true);
 
-      function pad(n) { return String(n).padStart(2, "0"); }
-      const daysInMonth = new Date(year, month + 1, 0).getDate();
+    // Removed old dates building logic
 
-      const dates = [];
-      for (let d = 1; d <= daysInMonth; d++) {
-        dates.push(`${year}-${pad(month + 1)}-${pad(d)}`);
-      }
-
-      const results = await Promise.all(
-        dates.map(date =>
-          fetch(buildApiUrl(`/flights?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&departureDate=${date}`))
-            .then(r => r.ok ? r.json() : [])
-            .then(flights => {
-              if (flights && flights.length > 0) {
-                return [date, Math.min(...flights.map(f => f.price))];
-              }
-              return [date, null];
-            })
-            .catch(() => [date, null])
-        )
-      );
-
-      if (cancelled) return;
-      const map = {};
-      results.forEach(([d, p]) => { map[d] = p; });
-      setPrices(map);
-      setLoading(false);
-    }
-
-    fetchMonthPrices();
+    fetch(buildApiUrl(`/flights?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`))
+      .then(r => r.ok ? r.json() : [])
+      .then(flights => {
+        if (cancelled) return;
+        const map = {};
+        if (flights && flights.length > 0) {
+          // Group flights by departureDate
+          flights.forEach(f => {
+            const d = f.departureDate;
+            if (!map[d] || f.price < map[d]) {
+              map[d] = f.price;
+            }
+          });
+        }
+        setPrices(map);
+        setLoadedRouteKey(routeKey);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setPrices({});
+          setLoadedRouteKey(routeKey);
+        }
+      });
 
     return () => { cancelled = true; };
-  }, [from, to, year, month, routeReady]);
+  }, [from, to, hasRoute, routeKey]);
 
-  return { prices: routeReady ? prices : {}, loading: routeReady ? loading : false };
+  return {
+    prices: hasRoute ? prices : {},
+    loading: hasRoute ? loadedRouteKey !== routeKey : false,
+  };
 }
 
 // ── AirportPicker ─────────────────────────────────────────
-function AirportPicker({ label, value, onChange, exclude }) {
+function AirportPicker({ label, value, onChange, exclude, airports = [] }) {
   const [query,   setQuery]  = useState("");
   const [open,    setOpen]   = useState(false);
   const wrapRef              = useRef(null);
   const inputRef             = useRef(null);
 
-  const selected = AIRPORTS.find((a) => a.code === value);
-  const filtered = AIRPORTS.filter((a) => {
-    if (a.code === exclude) return false;
-    if (!query) return true;
-    const q = query.toLowerCase();
-    return a.code.toLowerCase().includes(q) || a.name.toLowerCase().includes(q) ||
-           a.city.toLowerCase().includes(q) || a.country.toLowerCase().includes(q);
-  });
+  const selected = airports.find((a) => a.code === value);
+  const filtered = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+    return airports
+      .filter((a) => {
+        if (exclude && a.code === exclude) return false;
+        if (!normalizedQuery) return true;
+        return (
+          (a.city && a.city.toLowerCase().includes(normalizedQuery)) ||
+          (a.name && a.name.toLowerCase().includes(normalizedQuery)) ||
+          (a.code && a.code.toLowerCase().includes(normalizedQuery))
+        );
+      })
+      .sort((a, b) => {
+        if (exclude && label.toLowerCase() === "to") {
+          const aDirect = a.directFrom?.includes(exclude) || false;
+          const bDirect = b.directFrom?.includes(exclude) || false;
+          if (aDirect && !bDirect) return -1;
+          if (!aDirect && bDirect) return 1;
+
+          const aConn = a.connectingFrom?.includes(exclude) || false;
+          const bConn = b.connectingFrom?.includes(exclude) || false;
+          if (aConn && !bConn) return -1;
+          if (!aConn && bConn) return 1;
+        }
+        return 0;
+      });
+  }, [airports, exclude, label, query]);
 
   useEffect(() => {
     function handle(e) {
@@ -114,10 +104,9 @@ function AirportPicker({ label, value, onChange, exclude }) {
       <div className={"airport-input-wrap" + (open ? " open" : "") + (value ? " has-value" : "")} onClick={() => setOpen(true)}>
         {selected && !open ? (
           <div className="airport-selected">
-            <span className="airport-flag-large">{selected.flag}</span>
             <div className="airport-selected-text">
-              <span className="airport-selected-code">{selected.code}</span>
-              <span className="airport-selected-city">{selected.city}</span>
+              <span className="airport-selected-name">{selected.name} ({selected.code})</span>
+              <span className="airport-selected-city">{selected.city || "Unknown City"}</span>
             </div>
           </div>
         ) : (
@@ -131,21 +120,46 @@ function AirportPicker({ label, value, onChange, exclude }) {
         <div className="airport-dropdown">
           {!query && <div className="airport-dropdown-hint">Popular airports</div>}
           {filtered.length === 0 && <div className="airport-no-results">No airports found for "{query}"</div>}
-          {filtered.map(airport => (
-            <div key={airport.code}
-              className={"airport-option" + (value === airport.code ? " selected" : "")}
-              onMouseDown={e => { e.preventDefault(); select(airport); }}>
-              <span className="airport-option-flag">{airport.flag}</span>
-              <div className="airport-option-info">
-                <div className="airport-option-top">
-                  <span className="airport-option-code">{airport.code}</span>
-                  <span className="airport-option-city">{airport.city}, {airport.country}</span>
+          {filtered.length > 0 ? (
+            filtered.map((a) => {
+              const isDirect = exclude && a.directFrom?.includes(exclude);
+              const isConn = exclude && a.connectingFrom?.includes(exclude);
+              
+              const flightBadge = label.toLowerCase() === "to" && (isDirect || isConn) ? (
+                isDirect
+                  ? <span style={{
+                      fontSize: "10px", fontWeight: 700, padding: "2px 6px",
+                      borderRadius: "99px", background: "#d1fae5", color: "#065f46",
+                      flexShrink: 0, letterSpacing: "0.02em"
+                    }} aria-label="Direct flight available">Direct</span>
+                  : <span style={{
+                      fontSize: "10px", fontWeight: 700, padding: "2px 6px",
+                      borderRadius: "99px", background: "#fef3c7", color: "#92400e",
+                      flexShrink: 0, letterSpacing: "0.02em"
+                    }} aria-label="Connecting flight via 1 stop">1 Stop</span>
+              ) : null;
+
+              return (
+                <div
+                  key={a.code}
+                  className={"airport-option" + (value === a.code ? " selected" : "")}
+                  onMouseDown={e => { e.preventDefault(); select(a); }}
+                  role="option"
+                  aria-selected={value === a.code}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", width: "100%" }}>
+                    <div className="airport-option-info" style={{ flex: 1, minWidth: 0 }}>
+                      <div className="airport-option-top" style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        <span className="airport-option-name">{a.name} ({a.code})</span>
+                        {flightBadge}
+                      </div>
+                      <span className="airport-option-city">{a.city || "Unknown City"}, {a.country || "Unknown Country"}</span>
+                    </div>
+                  </div>
+                  {value === a.code && <span className="airport-check" aria-hidden="true">✓</span>}
                 </div>
-                <span className="airport-option-name">{airport.name}</span>
-              </div>
-              {value === airport.code && <span className="airport-check">✓</span>}
-            </div>
-          ))}
+              );
+            })
+          ) : null}
         </div>
       )}
     </div>
@@ -166,24 +180,16 @@ function CalendarPicker({ label, value, onChange, minDate, icon, from, to }) {
   const initDisplay = value
     ? new Date(value + "T00:00:00")
     : (minD > todayObj ? minD : todayObj);
-  const minimumDisplay = minDate ? new Date(minDate + "T00:00:00") : null;
-  const minimumYear = minimumDisplay?.getFullYear() ?? null;
-  const minimumMonth = minimumDisplay?.getMonth() ?? null;
-  const initialViewMonth = minimumYear !== null && minimumMonth !== null &&
-    new Date(initDisplay.getFullYear(), initDisplay.getMonth(), 1) < new Date(minimumYear, minimumMonth, 1)
-    ? minimumMonth
-    : initDisplay.getMonth();
-  const initialViewYear = minimumYear !== null && minimumMonth !== null &&
-    new Date(initDisplay.getFullYear(), initDisplay.getMonth(), 1) < new Date(minimumYear, minimumMonth, 1)
-    ? minimumYear
-    : initDisplay.getFullYear();
-  const [viewYear,  setViewYear]  = useState(initialViewYear);
-  const [viewMonth, setViewMonth] = useState(initialViewMonth);
+  const [viewYear,  setViewYear]  = useState(initDisplay.getFullYear());
+  const [viewMonth, setViewMonth] = useState(initDisplay.getMonth());
+  const minMonthStart = new Date(minD.getFullYear(), minD.getMonth(), 1);
+  const currentMonthStart = new Date(viewYear, viewMonth, 1);
+  const effectiveMonthStart = currentMonthStart < minMonthStart ? minMonthStart : currentMonthStart;
+  const effectiveViewYear = effectiveMonthStart.getFullYear();
+  const effectiveViewMonth = effectiveMonthStart.getMonth();
 
-  // Fetch real prices for this month + route
-  const { prices: fetchedPrices, loading: pricesLoading } = useMonthPrices(
-    from, to, viewYear, viewMonth
-  );
+  // Fetch real prices for this route
+  const { prices: fetchedPrices, loading: pricesLoading } = useMonthPrices(from, to);
 
   useEffect(() => {
     function handle(e) {
@@ -197,8 +203,8 @@ function CalendarPicker({ label, value, onChange, minDate, icon, from, to }) {
   function toIso(y, m, d) { return `${y}-${pad(m + 1)}-${pad(d)}`; }
 
   const todayIso    = toIso(todayObj.getFullYear(), todayObj.getMonth(), todayObj.getDate());
-  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
-  const rawFirstDay = new Date(viewYear, viewMonth, 1).getDay();
+  const daysInMonth = new Date(effectiveViewYear, effectiveViewMonth + 1, 0).getDate();
+  const rawFirstDay = new Date(effectiveViewYear, effectiveViewMonth, 1).getDay();
   const firstDay    = rawFirstDay === 0 ? 6 : rawFirstDay - 1;
 
   const cells = [];
@@ -206,18 +212,28 @@ function CalendarPicker({ label, value, onChange, minDate, icon, from, to }) {
   for (let d = 1; d <= daysInMonth; d++) cells.push(d);
 
   function canGoPrev() {
-    return new Date(viewYear, viewMonth - 1, 1) >= new Date(todayObj.getFullYear(), todayObj.getMonth(), 1);
+    return new Date(effectiveViewYear, effectiveViewMonth - 1, 1) >= minMonthStart;
   }
   function prevMonth() {
-    if (viewMonth === 0) { setViewMonth(11); setViewYear(y => y - 1); }
-    else setViewMonth(m => m - 1);
+    if (effectiveViewMonth === 0) {
+      setViewMonth(11);
+      setViewYear(effectiveViewYear - 1);
+    } else {
+      setViewMonth(effectiveViewMonth - 1);
+      setViewYear(effectiveViewYear);
+    }
   }
   function nextMonth() {
-    if (viewMonth === 11) { setViewMonth(0); setViewYear(y => y + 1); }
-    else setViewMonth(m => m + 1);
+    if (effectiveViewMonth === 11) {
+      setViewMonth(0);
+      setViewYear(effectiveViewYear + 1);
+    } else {
+      setViewMonth(effectiveViewMonth + 1);
+      setViewYear(effectiveViewYear);
+    }
   }
   function selectDay(day) {
-    const iso = toIso(viewYear, viewMonth, day);
+    const iso = toIso(effectiveViewYear, effectiveViewMonth, day);
     if (new Date(iso + "T00:00:00") < minD) return;
     onChange(iso);
     setOpen(false);
@@ -231,7 +247,7 @@ function CalendarPicker({ label, value, onChange, minDate, icon, from, to }) {
 
   // Compute cheapest day in this month from fetched data
   const monthPrices = Object.entries(fetchedPrices)
-    .filter(([k, v]) => k.startsWith(`${viewYear}-${pad(viewMonth + 1)}`) && v !== null)
+    .filter(([k, v]) => k.startsWith(`${effectiveViewYear}-${pad(effectiveViewMonth + 1)}`) && v !== null)
     .map(([, v]) => v);
   const lowestFare = monthPrices.length ? Math.min(...monthPrices) : null;
   const hasPrices  = from && to; // only show price hints when route is set
@@ -253,8 +269,8 @@ function CalendarPicker({ label, value, onChange, minDate, icon, from, to }) {
           <div className="cal-header">
             <button type="button" className="cal-nav-btn" onClick={prevMonth} disabled={!canGoPrev()}>‹</button>
             <div className="cal-header-center">
-              <span className="cal-month-name">{MONTHS[viewMonth]}</span>
-              <span className="cal-year">{viewYear}</span>
+              <span className="cal-month-name">{MONTHS[effectiveViewMonth]}</span>
+              <span className="cal-year">{effectiveViewYear}</span>
               {hasPrices && lowestFare && !pricesLoading && (
                 <span className="cal-lowest-badge">From £{lowestFare}</span>
               )}
@@ -272,7 +288,7 @@ function CalendarPicker({ label, value, onChange, minDate, icon, from, to }) {
             {DAYS.map(d => <div key={d} className="cal-day-header">{d}</div>)}
             {cells.map((day, i) => {
               if (!day) return <div key={`e${i}`} />;
-              const iso        = toIso(viewYear, viewMonth, day);
+              const iso        = toIso(effectiveViewYear, effectiveViewMonth, day);
               const isDisabled = new Date(iso + "T00:00:00") < minD;
               const isSelected = iso === value;
               const isToday    = iso === todayIso;
@@ -343,9 +359,9 @@ function PassengerCounter({ label, subtitle, min, max, value, onChange }) {
 }
 
 // ── SearchForm ────────────────────────────────────────────
-export function SearchForm({ onSearch }) {
+export function SearchForm({ onSearch, initialFrom = "" }) {
   const [tripType,      setTripType]      = useState("one-way");
-  const [from,          setFrom]          = useState("");
+  const [from,          setFrom]          = useState(initialFrom);
   const [to,            setTo]            = useState("");
   const [departureDate, setDepartureDate] = useState("");
   const [returnDate,    setReturnDate]    = useState("");
@@ -353,6 +369,23 @@ export function SearchForm({ onSearch }) {
   const [adults,        setAdults]        = useState(1);
   const [children,      setChildren]      = useState(0);
   const [infants,       setInfants]       = useState(0);
+  const [airports,      setAirports]      = useState([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadAirports() {
+      try {
+        const airportsData = await getAirports();
+        if (!cancelled) {
+          setAirports(airportsData);
+        }
+      } catch (err) {
+        console.error("Failed to load airport data", err);
+      }
+    }
+    loadAirports();
+    return () => { cancelled = true; };
+  }, []);
 
   const _td = new Date(); const today = `${_td.getFullYear()}-${String(_td.getMonth()+1).padStart(2,"0")}-${String(_td.getDate()).padStart(2,"0")}`;
   const total = adults + children + infants;
@@ -381,9 +414,9 @@ export function SearchForm({ onSearch }) {
       </div>
 
       <div className="airport-row">
-        <AirportPicker label="From" value={from} onChange={setFrom} exclude={to} />
+        <AirportPicker label="From" value={from} onChange={setFrom} exclude={to} airports={airports} />
         <button type="button" className="swap-btn" onClick={swapAirports} title="Swap">⇄</button>
-        <AirportPicker label="To"   value={to}   onChange={setTo}   exclude={from} />
+        <AirportPicker label="To"   value={to}   onChange={setTo}   exclude={from} airports={airports} />
       </div>
 
       <div className="dates-row">

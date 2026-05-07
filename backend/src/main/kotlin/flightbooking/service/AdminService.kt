@@ -18,10 +18,20 @@ import java.time.format.DateTimeFormatter
 import java.util.Base64
 
 object AdminService {
+    private const val adminCacheTtlMs = 30 * 1000L
     private val json =
         Json {
             ignoreUnknownKeys = true
         }
+
+    @Volatile
+    private var cachedAdminBookings: Pair<Long, List<BookingService.Booking>>? = null
+
+    @Volatile
+    private var cachedReports: Pair<Long, AdminReports>? = null
+
+    @Volatile
+    private var cachedComplaints: Pair<Long, List<AdminComplaint>>? = null
 
     private const val adminTokenPrefix = "leedsair-admin"
 
@@ -134,12 +144,12 @@ object AdminService {
 
     fun getBookings(authorizationHeader: String?): List<BookingService.Booking> {
         requireAdmin(authorizationHeader)
-        return BookingService.getAllBookingsForAdmin()
+        return loadAdminBookings()
     }
 
     fun getMetrics(authorizationHeader: String?): AdminMetrics {
         requireAdmin(authorizationHeader)
-        val bookings = BookingService.getAllBookingsForAdmin()
+        val bookings = loadAdminBookings()
 
         val cancellations = bookings.count { it.status == "Cancelled" }
         val totalRevenue = bookings.filterNot { it.status == "Cancelled" }.sumOf { it.totalPrice }
@@ -160,140 +170,161 @@ object AdminService {
 
     fun getReports(authorizationHeader: String?): AdminReports {
         requireAdmin(authorizationHeader)
-        val bookings = BookingService.getAllBookingsForAdmin()
+        val now = System.currentTimeMillis()
+        cachedReports?.takeIf { now - it.first < adminCacheTtlMs }?.let { return it.second }
+        val bookings = loadAdminBookings()
         val loyaltyUserIds =
             transaction {
                 LoyaltyAccountsTable.selectAll().map { it[LoyaltyAccountsTable.userId] }.toSet()
             }
 
+        var cancellations = 0
+        var loyaltyMembers = 0
+        var nonMembers = 0
+        val bookingsPerFlightCounts = linkedMapOf<String, Int>()
+        val popularRouteCounts = linkedMapOf<String, Int>()
+        val revenuePerRouteTotals = linkedMapOf<String, Double>()
+        val bookingsByStatusCounts = linkedMapOf<String, Int>()
+        val cancellationReasonCounts = linkedMapOf<String, Int>()
+        val monthlyRevenueTotals = linkedMapOf<String, Double>()
+        val peakBookingHourCounts = linkedMapOf<String, Int>()
+
+        bookings.forEach { booking ->
+            val status = booking.status.ifBlank { "Unknown" }
+            val route = "${booking.flight?.from ?: booking.from} -> ${booking.flight?.to ?: booking.to}"
+            val flightNumber = booking.flight?.flightNumber ?: "-"
+            val bookingHour = booking.createdAt.substringAfter("T", "00:00").take(2) + ":00"
+
+            bookingsPerFlightCounts[flightNumber] = (bookingsPerFlightCounts[flightNumber] ?: 0) + 1
+            popularRouteCounts[route] = (popularRouteCounts[route] ?: 0) + 1
+            bookingsByStatusCounts[status] = (bookingsByStatusCounts[status] ?: 0) + 1
+            peakBookingHourCounts[bookingHour] = (peakBookingHourCounts[bookingHour] ?: 0) + 1
+
+            if (booking.userId in loyaltyUserIds) {
+                loyaltyMembers += 1
+            } else {
+                nonMembers += 1
+            }
+
+            if (status == "Cancelled") {
+                cancellations += 1
+                val reason = booking.cancellationReason?.takeIf(String::isNotBlank) ?: "No reason recorded"
+                cancellationReasonCounts[reason] = (cancellationReasonCounts[reason] ?: 0) + 1
+            } else {
+                revenuePerRouteTotals[route] = (revenuePerRouteTotals[route] ?: 0.0) + booking.totalPrice
+                val month =
+                    runCatching {
+                        LocalDateTime.parse(booking.createdAt).format(DateTimeFormatter.ofPattern("MMM yyyy"))
+                    }.getOrDefault(booking.createdAt.take(7))
+                monthlyRevenueTotals[month] = (monthlyRevenueTotals[month] ?: 0.0) + booking.totalPrice
+            }
+        }
+
         val cancellationRate =
             if (bookings.isEmpty()) {
                 0.0
             } else {
-                bookings.count { it.status == "Cancelled" }.toDouble() / bookings.size.toDouble() * 100.0
+                cancellations.toDouble() / bookings.size.toDouble() * 100.0
             }
 
         val bookingsPerFlight =
-            bookings.groupingBy { it.flight?.flightNumber ?: "-" }
-                .eachCount()
-                .entries
+            bookingsPerFlightCounts.entries
                 .sortedByDescending { it.value }
                 .take(10)
                 .map { BookingFlightCount(flightNumber = it.key, count = it.value) }
 
         val popularRoutes =
-            bookings.groupingBy { "${it.flight?.from ?: it.from} -> ${it.flight?.to ?: it.to}" }
-                .eachCount()
-                .entries
+            popularRouteCounts.entries
                 .sortedByDescending { it.value }
                 .take(10)
                 .map { ReportCount(route = it.key, count = it.value) }
 
         val revenuePerRoute =
-            bookings
-                .filterNot { it.status == "Cancelled" }
-                .groupBy { "${it.flight?.from ?: it.from} -> ${it.flight?.to ?: it.to}" }
-                .map { (route, rows) -> ReportRevenue(route = route, revenue = round2(rows.sumOf { it.totalPrice })) }
-                .sortedByDescending { it.revenue }
+            revenuePerRouteTotals.entries
+                .sortedByDescending { it.value }
                 .take(10)
+                .map { ReportRevenue(route = it.key, revenue = round2(it.value)) }
 
         val bookingsByStatus =
-            bookings
-                .groupingBy { it.status.ifBlank { "Unknown" } }
-                .eachCount()
-                .entries
+            bookingsByStatusCounts.entries
                 .sortedByDescending { it.value }
                 .map { ReportBreakdown(label = it.key, count = it.value) }
 
         val cancellationReasons =
-            bookings
-                .filter { it.status == "Cancelled" }
-                .groupingBy { it.cancellationReason?.takeIf(String::isNotBlank) ?: "No reason recorded" }
-                .eachCount()
-                .entries
+            cancellationReasonCounts.entries
                 .sortedByDescending { it.value }
                 .take(8)
                 .map { ReportBreakdown(label = it.key, count = it.value) }
 
         val loyaltyMix =
             listOf(
-                ReportBreakdown(
-                    label = "Loyalty Members",
-                    count = bookings.count { it.userId in loyaltyUserIds },
-                ),
-                ReportBreakdown(
-                    label = "Non-members",
-                    count = bookings.count { it.userId !in loyaltyUserIds },
-                ),
+                ReportBreakdown(label = "Loyalty Members", count = loyaltyMembers),
+                ReportBreakdown(label = "Non-members", count = nonMembers),
             )
 
         val monthlyRevenue =
-            bookings
-                .filterNot { it.status == "Cancelled" }
-                .groupBy { booking ->
-                    runCatching {
-                        LocalDateTime.parse(booking.createdAt).format(DateTimeFormatter.ofPattern("MMM yyyy"))
-                    }.getOrDefault(booking.createdAt.take(7))
-                }
-                .map { (month, rows) -> MonthlyRevenue(month = month, revenue = round2(rows.sumOf { it.totalPrice })) }
-                .sortedBy { it.month.takeLast(4) + it.month.take(3) }
+            monthlyRevenueTotals.entries
+                .sortedBy { it.key.takeLast(4) + it.key.take(3) }
                 .takeLast(6)
+                .map { MonthlyRevenue(month = it.key, revenue = round2(it.value)) }
 
         val peakBookingHour =
-            bookings
-                .groupingBy {
-                    it.createdAt.substringAfter("T", "00:00").substring(0, 2) + ":00"
-                }
-                .eachCount()
-                .maxByOrNull { it.value }
-                ?.key
-                ?: "-"
+            peakBookingHourCounts.maxByOrNull { it.value }?.key ?: "-"
 
-        return AdminReports(
-            cancellationRate = round2(cancellationRate),
-            peakBookingHour = peakBookingHour,
-            bookingsPerFlight = bookingsPerFlight,
-            popularRoutes = popularRoutes,
-            revenuePerRoute = revenuePerRoute,
-            bookingsByStatus = bookingsByStatus,
-            cancellationReasons = cancellationReasons,
-            loyaltyMix = loyaltyMix,
-            monthlyRevenue = monthlyRevenue,
-        )
+        val reports =
+            AdminReports(
+                cancellationRate = round2(cancellationRate),
+                peakBookingHour = peakBookingHour,
+                bookingsPerFlight = bookingsPerFlight,
+                popularRoutes = popularRoutes,
+                revenuePerRoute = revenuePerRoute,
+                bookingsByStatus = bookingsByStatus,
+                cancellationReasons = cancellationReasons,
+                loyaltyMix = loyaltyMix,
+                monthlyRevenue = monthlyRevenue,
+            )
+        cachedReports = now to reports
+        return reports
     }
 
     fun getComplaints(authorizationHeader: String?): List<AdminComplaint> {
         requireAdmin(authorizationHeader)
-        return transaction {
-            val usersById = UsersTable.selectAll().associateBy { it[UsersTable.id] }
-            val bookingsById = BookingsTable.selectAll().associateBy { it[BookingsTable.id] }
+        val now = System.currentTimeMillis()
+        cachedComplaints?.takeIf { now - it.first < adminCacheTtlMs }?.let { return it.second }
 
-            ComplaintsTable.selectAll()
-                .sortedByDescending { it[ComplaintsTable.createdAt] }
-                .map { row ->
-                    val user = usersById[row[ComplaintsTable.userId]]
-                    val bookingReference =
-                        row[ComplaintsTable.bookingId]?.let { bookingId ->
-                            bookingsById[bookingId]?.get(BookingsTable.bookingReference)
-                        }
-                    val customerName =
-                        listOfNotNull(
-                            user?.get(UsersTable.firstName)?.takeIf { it.isNotBlank() },
-                            user?.get(UsersTable.lastName)?.takeIf { it.isNotBlank() },
-                        ).joinToString(" ").ifBlank { "Guest customer" }
+        val complaints =
+            transaction {
+                val usersById = UsersTable.selectAll().associateBy { it[UsersTable.id] }
+                val bookingsById = BookingsTable.selectAll().associateBy { it[BookingsTable.id] }
 
-                    AdminComplaint(
-                        id = row[ComplaintsTable.id],
-                        bookingReference = bookingReference,
-                        customerName = customerName,
-                        customerEmail = user?.get(UsersTable.email),
-                        subject = row[ComplaintsTable.subject],
-                        message = row[ComplaintsTable.message],
-                        status = row[ComplaintsTable.status].replaceFirstChar { it.uppercase() },
-                        createdAt = row[ComplaintsTable.createdAt].toString(),
-                    )
-                }
-        }
+                ComplaintsTable.selectAll()
+                    .sortedByDescending { it[ComplaintsTable.createdAt] }
+                    .map { row ->
+                        val user = usersById[row[ComplaintsTable.userId]]
+                        val bookingReference =
+                            row[ComplaintsTable.bookingId]?.let { bookingId ->
+                                bookingsById[bookingId]?.get(BookingsTable.bookingReference)
+                            }
+                        val customerName =
+                            listOfNotNull(
+                                user?.get(UsersTable.firstName)?.takeIf { it.isNotBlank() },
+                                user?.get(UsersTable.lastName)?.takeIf { it.isNotBlank() },
+                            ).joinToString(" ").ifBlank { "Guest customer" }
+
+                        AdminComplaint(
+                            id = row[ComplaintsTable.id],
+                            bookingReference = bookingReference,
+                            customerName = customerName,
+                            customerEmail = user?.get(UsersTable.email),
+                            subject = row[ComplaintsTable.subject],
+                            message = row[ComplaintsTable.message],
+                            status = row[ComplaintsTable.status].replaceFirstChar { it.uppercase() },
+                            createdAt = row[ComplaintsTable.createdAt].toString(),
+                        )
+                    }
+            }
+        cachedComplaints = now to complaints
+        return complaints
     }
 
     fun resolveModificationRequest(
@@ -357,9 +388,21 @@ object AdminService {
             )
         }
 
-        return BookingService.getAllBookingsForAdmin()
+        cachedAdminBookings = null
+        cachedReports = null
+        cachedComplaints = null
+
+        return loadAdminBookings()
             .firstOrNull { it.id == bookingId }
             ?: throw IllegalStateException("Updated booking could not be loaded")
+    }
+
+    private fun loadAdminBookings(): List<BookingService.Booking> {
+        val now = System.currentTimeMillis()
+        cachedAdminBookings?.takeIf { now - it.first < adminCacheTtlMs }?.let { return it.second }
+        val bookings = BookingService.getAllBookingsForAdmin()
+        cachedAdminBookings = now to bookings
+        return bookings
     }
 
     private fun createAdminToken(username: String): String {

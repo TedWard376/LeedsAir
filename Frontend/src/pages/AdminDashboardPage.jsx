@@ -2,13 +2,13 @@ import { useState, useEffect, useMemo } from "react";
 import {
   adminGetBookings,
   adminGetComplaints,
-  adminGetMetrics,
   adminGetReports,
   adminResolveModificationRequest,
 } from "../services/api";
 import { LoadingSpinner, ErrorMessage } from "../components/StatusMessages";
 
 const STATUS_FILTERS = ["All", "Confirmed", "Cancelled", "Pending", "CheckedIn"];
+const BOOKINGS_PER_PAGE = 20;
 
 function exportCSV(rows, filename) {
   if (!rows.length) return;
@@ -71,6 +71,28 @@ function formatRequestType(type) {
   return type.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+function buildMetricsFromBookings(bookings) {
+  const cancellations = bookings.filter((booking) => booking.status === "Cancelled").length;
+  const totalRevenue = bookings
+    .filter((booking) => booking.status !== "Cancelled")
+    .reduce((sum, booking) => sum + (booking.totalPrice || 0), 0);
+  const routeCounts = bookings.reduce((counts, booking) => {
+    const route = `${booking.flight?.from || booking.from || "-"} -> ${booking.flight?.to || booking.to || "-"}`;
+    counts.set(route, (counts.get(route) || 0) + 1);
+    return counts;
+  }, new Map());
+  const popularRoute = Array.from(routeCounts.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] || "-";
+
+  return {
+    totalBookings: bookings.length,
+    cancellations,
+    totalRevenue,
+    popularRoute,
+    activeUsers: new Set(bookings.map((booking) => booking.userId)).size,
+    cancellationRate: bookings.length ? ((cancellations / bookings.length) * 100).toFixed(2) : "0.00",
+  };
+}
+
 export function AdminDashboardPage({ onNavigate }) {
   const [tab, setTab] = useState("bookings");
   const [bookings, setBookings] = useState([]);
@@ -88,15 +110,15 @@ export function AdminDashboardPage({ onNavigate }) {
   const [dateFilter, setDateFilter] = useState("");
   const [routeFilter, setRouteFilter] = useState("");
   const [expandedId, setExpandedId] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
 
   async function refreshDashboardData(includeReports = false) {
-    const [bookingsData, metricsData, reportsData] = await Promise.all([
+    const [bookingsData, reportsData] = await Promise.all([
       adminGetBookings(),
-      adminGetMetrics(),
       includeReports ? adminGetReports() : Promise.resolve(null),
     ]);
     setBookings(bookingsData);
-    setMetrics(metricsData);
+    setMetrics(buildMetricsFromBookings(bookingsData));
     if (includeReports && reportsData) {
       setReports(reportsData);
     }
@@ -113,13 +135,10 @@ export function AdminDashboardPage({ onNavigate }) {
       setLoading(true);
       setError(null);
       try {
-        const [bookingsData, metricsData] = await Promise.all([
-          adminGetBookings(),
-          adminGetMetrics(),
-        ]);
+        const bookingsData = await adminGetBookings();
         if (!cancelled) {
           setBookings(bookingsData);
-          setMetrics(metricsData);
+          setMetrics(buildMetricsFromBookings(bookingsData));
         }
       } catch (err) {
         if (!cancelled) setError(err.message);
@@ -208,6 +227,23 @@ export function AdminDashboardPage({ onNavigate }) {
       .filter((request) => request.status?.toLowerCase() === "pending")
       .map((request) => ({ booking, request }))
   ), [bookings]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+    setExpandedId(null);
+  }, [statusFilter, search, dateFilter, routeFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / BOOKINGS_PER_PAGE));
+  const paginatedFiltered = useMemo(() => {
+    const start = (currentPage - 1) * BOOKINGS_PER_PAGE;
+    return filtered.slice(start, start + BOOKINGS_PER_PAGE);
+  }, [currentPage, filtered]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
 
   const uniqueRoutes = useMemo(() => {
     const routeSet = new Set();
@@ -322,7 +358,8 @@ export function AdminDashboardPage({ onNavigate }) {
 
             <div className="admin-results-bar">
               <span className="admin-results-count">
-                Showing <strong>{filtered.length}</strong> of <strong>{bookings.length}</strong> bookings
+                Showing <strong>{paginatedFiltered.length}</strong> of <strong>{filtered.length}</strong> filtered bookings
+                {" "}from <strong>{bookings.length}</strong> total
               </span>
               <button
                 className="export-btn"
@@ -331,6 +368,30 @@ export function AdminDashboardPage({ onNavigate }) {
                 Export CSV
               </button>
             </div>
+
+            {filtered.length > BOOKINGS_PER_PAGE && (
+              <div className="admin-results-bar" style={{ marginTop: "-0.75rem" }}>
+                <span className="admin-results-count">
+                  Page <strong>{currentPage}</strong> of <strong>{totalPages}</strong>
+                </span>
+                <div style={{ display: "flex", gap: "0.75rem" }}>
+                  <button
+                    className="admin-clear-btn"
+                    onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                    disabled={currentPage === 1}
+                  >
+                    Previous
+                  </button>
+                  <button
+                    className="admin-clear-btn"
+                    onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                    disabled={currentPage === totalPages}
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
 
             <div className="admin-table-wrapper">
               <div className="admin-table-header">
@@ -347,7 +408,7 @@ export function AdminDashboardPage({ onNavigate }) {
                 <div className="empty-state"><p>No bookings match your filters.</p></div>
               )}
 
-              {filtered.map((booking) => (
+              {paginatedFiltered.map((booking) => (
                 <div key={booking.id || booking.bookingReference}>
                   <div
                     className="admin-table-row admin-table-row--clickable"
@@ -547,6 +608,57 @@ export function AdminDashboardPage({ onNavigate }) {
                         }
                       />
                     </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {!loading && !error && tab === "complaints" && (
+          <div className="modifications-section">
+            <h2>Customer Complaints</h2>
+            <p className="section-subtitle">
+              Review submitted complaints from customers and follow up by booking reference.
+            </p>
+
+            {!complaints && <LoadingSpinner message="Loading complaints..." />}
+
+            {complaints && complaints.length === 0 && (
+              <div className="empty-state">
+                <span className="empty-icon">✓</span>
+                <p>No complaints submitted yet.</p>
+              </div>
+            )}
+
+            {complaints && complaints.length > 0 && (
+              <div className="admin-table-wrapper">
+                <div className="admin-table-header" style={{ gridTemplateColumns: "0.7fr 1fr 1fr 0.8fr 0.9fr 1.8fr" }}>
+                  <span>ID</span>
+                  <span>Customer</span>
+                  <span>Booking</span>
+                  <span>Status</span>
+                  <span>Submitted</span>
+                  <span>Complaint</span>
+                </div>
+                {complaints.map((complaint) => (
+                  <div className="admin-table-row" style={{ gridTemplateColumns: "0.7fr 1fr 1fr 0.8fr 0.9fr 1.8fr" }} key={complaint.id}>
+                    <span className="ref-value">CMP{String(complaint.id).padStart(6, "0")}</span>
+                    <span>
+                      <strong>{complaint.customerName || "Guest customer"}</strong>
+                      <br />
+                      <small>{complaint.customerEmail || "-"}</small>
+                    </span>
+                    <span>{complaint.bookingReference || "Not provided"}</span>
+                    <span className={`status-badge status-${String(complaint.status || "open").toLowerCase()}`}>
+                      {complaint.status || "Open"}
+                    </span>
+                    <span>{complaint.createdAt ? new Date(complaint.createdAt).toLocaleString("en-GB") : "-"}</span>
+                    <span>
+                      <strong>{complaint.subject || "General complaint"}</strong>
+                      <br />
+                      <small>{complaint.message || "No details provided."}</small>
+                    </span>
                   </div>
                 ))}
               </div>
