@@ -152,7 +152,7 @@ object BookingService {
 
     private data class BookingHydrationContext(
         val passengersByBookingId: Map<Int, ResultRow>,
-        val flightIdByBookingId: Map<Int, Int>,
+        val flightIdsByBookingId: Map<Int, List<Int>>,
         val flightsById: Map<Int, BookingFlightSummary>,
         val modificationsByBookingId: Map<Int, List<ResultRow>>,
     )
@@ -564,9 +564,9 @@ object BookingService {
         val bookingFlightRows = BookingFlightsTable.selectAll()
             .andWhere { BookingFlightsTable.bookingId inList bookingIds }
             .toList()
-        val flightIdByBookingId = bookingFlightRows.associate { row ->
-            row[BookingFlightsTable.bookingId] to row[BookingFlightsTable.flightId]
-        }
+        val flightIdsByBookingId = bookingFlightRows
+            .groupBy { it[BookingFlightsTable.bookingId] }
+            .mapValues { (_, rows) -> rows.map { it[BookingFlightsTable.flightId] } }
 
         val modificationsByBookingId = ModificationRequestsTable.selectAll()
             .andWhere { ModificationRequestsTable.bookingId inList bookingIds }
@@ -576,10 +576,51 @@ object BookingService {
                 rows.sortedByDescending { it[ModificationRequestsTable.createdAt] }
             }
 
+        val primaryFlightIds = flightIdsByBookingId.values.mapNotNull { it.firstOrNull() }.distinct()
+        val flightsById = if (primaryFlightIds.isEmpty()) {
+            emptyMap()
+        } else {
+            val scheduledFlightRows = ScheduledFlightsTable.selectAll()
+                .andWhere { ScheduledFlightsTable.id inList primaryFlightIds }
+                .toList()
+            val scheduledFlightsById = scheduledFlightRows.associateBy { it[ScheduledFlightsTable.id] }
+
+            val scheduleIds = scheduledFlightRows.map { it[ScheduledFlightsTable.scheduleId] }.distinct()
+            val scheduleRows = if (scheduleIds.isEmpty()) {
+                emptyList()
+            } else {
+                FlightSchedulesTable.selectAll()
+                    .andWhere { FlightSchedulesTable.id inList scheduleIds }
+                    .toList()
+            }
+            val schedulesById = scheduleRows.associateBy { it[FlightSchedulesTable.id] }
+
+            val airportIds = scheduleRows
+                .flatMap { listOf(it[FlightSchedulesTable.departureAirportId], it[FlightSchedulesTable.arrivalAirportId]) }
+                .distinct()
+            val airportRows = if (airportIds.isEmpty()) {
+                emptyList()
+            } else {
+                AirportsTable.selectAll()
+                    .andWhere { AirportsTable.id inList airportIds }
+                    .toList()
+            }
+            val airportsById = airportRows.associateBy { it[AirportsTable.id] }
+
+            scheduledFlightsById.mapNotNull { (flightId, scheduledFlightRow) ->
+                val scheduleRow = schedulesById[scheduledFlightRow[ScheduledFlightsTable.scheduleId]] ?: return@mapNotNull null
+                flightId to loadFlightSummaryFromRows(
+                    scheduledFlightRow = scheduledFlightRow,
+                    scheduleRow = scheduleRow,
+                    airportsById = airportsById,
+                )
+            }.toMap()
+        }
+
         return BookingHydrationContext(
             passengersByBookingId = passengersByBookingId,
-            flightIdByBookingId = flightIdByBookingId,
-            flightsById = emptyMap(),
+            flightIdsByBookingId = flightIdsByBookingId,
+            flightsById = flightsById,
             modificationsByBookingId = modificationsByBookingId,
         )
     }
@@ -597,14 +638,14 @@ object BookingService {
             ?.toPassenger()
             ?: Passenger()
 
-        val flightIds = BookingFlightsTable.selectAll()
-            .filter { it[BookingFlightsTable.bookingId] == bookingId }
-            .map { it[BookingFlightsTable.flightId] }
+        val flightIds = context.flightIdsByBookingId[bookingId].orEmpty()
 
-        val flight = if (flightIds.isNotEmpty()) loadFlightSummary(flightIds) else null
-        val modificationHistory = ModificationRequestsTable.selectAll()
-            .filter { it[ModificationRequestsTable.bookingId] == bookingId }
-            .sortedByDescending { it[ModificationRequestsTable.createdAt] }
+        val flight = when {
+            flightIds.isEmpty() -> null
+            flightIds.size == 1 -> context.flightsById[flightIds.first()] ?: loadFlightSummary(flightIds)
+            else -> loadFlightSummary(flightIds)
+        }
+        val modificationHistory = context.modificationsByBookingId[bookingId].orEmpty()
         val latestModification = modificationHistory.firstOrNull()
         val cancellationModification = modificationHistory.firstOrNull {
             it[ModificationRequestsTable.requestType].equals("cancellation", ignoreCase = true)
@@ -690,6 +731,28 @@ object BookingService {
             arrivalTime = arrivalDateTime.toLocalTime().toString(),
             departureDate = departureDateTime.toLocalDate().toString(),
             stops = if (isConnecting) flightIds.size - 1 else firstSchedule[FlightSchedulesTable.stops],
+        )
+    }
+
+    private fun loadFlightSummaryFromRows(
+        scheduledFlightRow: ResultRow,
+        scheduleRow: ResultRow,
+        airportsById: Map<Int, ResultRow>,
+    ): BookingFlightSummary {
+        val departureAirport = airportsById[scheduleRow[FlightSchedulesTable.departureAirportId]]
+        val arrivalAirport = airportsById[scheduleRow[FlightSchedulesTable.arrivalAirportId]]
+        val departureDateTime = scheduledFlightRow[ScheduledFlightsTable.departureTime]
+        val arrivalDateTime = scheduledFlightRow[ScheduledFlightsTable.arrivalTime]
+
+        return BookingFlightSummary(
+            id = scheduledFlightRow[ScheduledFlightsTable.id],
+            flightNumber = scheduleRow[FlightSchedulesTable.flightNumber],
+            from = departureAirport?.get(AirportsTable.code),
+            to = arrivalAirport?.get(AirportsTable.code),
+            departureTime = departureDateTime.toLocalTime().toString(),
+            arrivalTime = arrivalDateTime.toLocalTime().toString(),
+            departureDate = departureDateTime.toLocalDate().toString(),
+            stops = scheduleRow[FlightSchedulesTable.stops],
         )
     }
 

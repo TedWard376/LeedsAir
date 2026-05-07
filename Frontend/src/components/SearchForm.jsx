@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect, useCallback } from "react";
-import { buildApiUrl, getAirports, getHomeData } from "../services/api";
+import { useState, useRef, useEffect, useMemo } from "react";
+import { buildApiUrl, getAirports } from "../services/api";
 
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const DAYS   = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
@@ -54,42 +54,33 @@ function AirportPicker({ label, value, onChange, exclude, airports = [] }) {
   const inputRef             = useRef(null);
 
   const selected = airports.find((a) => a.code === value);
-  const filtered = airports.filter((a) => {
-    if (exclude && a.code === exclude) return false;
-    if (!query) return true;
-    return (
-      (a.city && a.city.toLowerCase().includes(query.toLowerCase())) ||
-      (a.name && a.name.toLowerCase().includes(query.toLowerCase())) ||
-      (a.code && a.code.toLowerCase().includes(query.toLowerCase()))
-    );
-  }).sort((a, b) => {
-    if (exclude && label.toLowerCase() === "to") {
-      const aDirect = a.directFrom?.includes(exclude) || false;
-      const bDirect = b.directFrom?.includes(exclude) || false;
-      if (aDirect && !bDirect) return -1;
-      if (!aDirect && bDirect) return 1;
+  const filtered = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+    return airports
+      .filter((a) => {
+        if (exclude && a.code === exclude) return false;
+        if (!normalizedQuery) return true;
+        return (
+          (a.city && a.city.toLowerCase().includes(normalizedQuery)) ||
+          (a.name && a.name.toLowerCase().includes(normalizedQuery)) ||
+          (a.code && a.code.toLowerCase().includes(normalizedQuery))
+        );
+      })
+      .sort((a, b) => {
+        if (exclude && label.toLowerCase() === "to") {
+          const aDirect = a.directFrom?.includes(exclude) || false;
+          const bDirect = b.directFrom?.includes(exclude) || false;
+          if (aDirect && !bDirect) return -1;
+          if (!aDirect && bDirect) return 1;
 
-      const aConn = a.connectingFrom?.includes(exclude) || false;
-      const bConn = b.connectingFrom?.includes(exclude) || false;
-      if (aConn && !bConn) return -1;
-      if (!aConn && bConn) return 1;
-    }
-    return 0;
-  });
-
-  useEffect(() => {
-    const fetchAirports = async () => {
-      try {
-        const res = await fetch("/api/airports");
-        const data = await res.json();
-        setAIRPORTS(data);
-      } catch (err) {
-        console.error("Failed to load airports:", err);
-      }
-    };
-
-    fetchAirports();
-  }, []);
+          const aConn = a.connectingFrom?.includes(exclude) || false;
+          const bConn = b.connectingFrom?.includes(exclude) || false;
+          if (aConn && !bConn) return -1;
+          if (!aConn && bConn) return 1;
+        }
+        return 0;
+      });
+  }, [airports, exclude, label, query]);
 
   useEffect(() => {
     function handle(e) {
@@ -130,13 +121,6 @@ function AirportPicker({ label, value, onChange, exclude, airports = [] }) {
               const isDirect = exclude && a.directFrom?.includes(exclude);
               const isConn = exclude && a.connectingFrom?.includes(exclude);
               
-              let dotColor = "transparent";
-              // Only highlight destinations in the "To" picker
-              if (label.toLowerCase() === "to") {
-                if (isDirect) dotColor = "#10b981"; 
-                else if (isConn) dotColor = "#f59e0b"; 
-              }
-
               const flightBadge = label.toLowerCase() === "to" && (isDirect || isConn) ? (
                 isDirect
                   ? <span style={{
@@ -365,7 +349,7 @@ function PassengerCounter({ label, subtitle, min, max, value, onChange }) {
 }
 
 // ── SearchForm ────────────────────────────────────────────
-export function SearchForm({ onSearch }) {
+export function SearchForm({ onSearch, initialFrom = "LBA" }) {
   const [tripType,      setTripType]      = useState("one-way");
   const [from,          setFrom]          = useState("");
   const [to,            setTo]            = useState("");
@@ -379,25 +363,25 @@ export function SearchForm({ onSearch }) {
 
   useEffect(() => {
     let cancelled = false;
-    async function loadInitialData() {
+    async function loadAirports() {
       try {
-        const [airportsData, homeData] = await Promise.all([
-          getAirports(),
-          getHomeData()
-        ]);
+        const airportsData = await getAirports();
         if (!cancelled) {
           setAirports(airportsData);
-          if (homeData && homeData.nearestAirport && homeData.nearestAirport.iataCode) {
-            setFrom(homeData.nearestAirport.iataCode);
-          }
         }
       } catch (err) {
-        console.error("Failed to load initial search form data", err);
+        console.error("Failed to load airport data", err);
       }
     }
-    loadInitialData();
+    loadAirports();
     return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => {
+    if (!from && initialFrom) {
+      setFrom(initialFrom);
+    }
+  }, [from, initialFrom]);
 
   const _td = new Date(); const today = `${_td.getFullYear()}-${String(_td.getMonth()+1).padStart(2,"0")}-${String(_td.getDate()).padStart(2,"0")}`;
   const total = adults + children + infants;

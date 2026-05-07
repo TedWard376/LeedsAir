@@ -18,10 +18,17 @@ import java.time.format.DateTimeFormatter
 import java.util.Base64
 
 object AdminService {
+    private const val adminCacheTtlMs = 30 * 1000L
     private val json =
         Json {
             ignoreUnknownKeys = true
         }
+
+    @Volatile
+    private var cachedReports: Pair<Long, AdminReports>? = null
+
+    @Volatile
+    private var cachedComplaints: Pair<Long, List<AdminComplaint>>? = null
 
     private const val adminTokenPrefix = "leedsair-admin"
 
@@ -160,6 +167,8 @@ object AdminService {
 
     fun getReports(authorizationHeader: String?): AdminReports {
         requireAdmin(authorizationHeader)
+        val now = System.currentTimeMillis()
+        cachedReports?.takeIf { now - it.first < adminCacheTtlMs }?.let { return it.second }
         val bookings = BookingService.getAllBookingsForAdmin()
         val loyaltyUserIds =
             transaction {
@@ -249,7 +258,8 @@ object AdminService {
                 ?.key
                 ?: "-"
 
-        return AdminReports(
+        val reports =
+            AdminReports(
             cancellationRate = round2(cancellationRate),
             peakBookingHour = peakBookingHour,
             bookingsPerFlight = bookingsPerFlight,
@@ -260,11 +270,17 @@ object AdminService {
             loyaltyMix = loyaltyMix,
             monthlyRevenue = monthlyRevenue,
         )
+        cachedReports = now to reports
+        return reports
     }
 
     fun getComplaints(authorizationHeader: String?): List<AdminComplaint> {
         requireAdmin(authorizationHeader)
-        return transaction {
+        val now = System.currentTimeMillis()
+        cachedComplaints?.takeIf { now - it.first < adminCacheTtlMs }?.let { return it.second }
+
+        val complaints =
+            transaction {
             val usersById = UsersTable.selectAll().associateBy { it[UsersTable.id] }
             val bookingsById = BookingsTable.selectAll().associateBy { it[BookingsTable.id] }
 
@@ -294,6 +310,8 @@ object AdminService {
                     )
                 }
         }
+        cachedComplaints = now to complaints
+        return complaints
     }
 
     fun resolveModificationRequest(
@@ -356,6 +374,9 @@ object AdminService {
                 description = description,
             )
         }
+
+        cachedReports = null
+        cachedComplaints = null
 
         return BookingService.getAllBookingsForAdmin()
             .firstOrNull { it.id == bookingId }

@@ -2,7 +2,6 @@ import { useState, useEffect, useMemo } from "react";
 import {
   adminGetBookings,
   adminGetComplaints,
-  adminGetMetrics,
   adminGetReports,
   adminResolveModificationRequest,
 } from "../services/api";
@@ -71,6 +70,28 @@ function formatRequestType(type) {
   return type.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+function buildMetricsFromBookings(bookings) {
+  const cancellations = bookings.filter((booking) => booking.status === "Cancelled").length;
+  const totalRevenue = bookings
+    .filter((booking) => booking.status !== "Cancelled")
+    .reduce((sum, booking) => sum + (booking.totalPrice || 0), 0);
+  const routeCounts = bookings.reduce((counts, booking) => {
+    const route = `${booking.flight?.from || booking.from || "-"} -> ${booking.flight?.to || booking.to || "-"}`;
+    counts.set(route, (counts.get(route) || 0) + 1);
+    return counts;
+  }, new Map());
+  const popularRoute = Array.from(routeCounts.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] || "-";
+
+  return {
+    totalBookings: bookings.length,
+    cancellations,
+    totalRevenue,
+    popularRoute,
+    activeUsers: new Set(bookings.map((booking) => booking.userId)).size,
+    cancellationRate: bookings.length ? ((cancellations / bookings.length) * 100).toFixed(2) : "0.00",
+  };
+}
+
 export function AdminDashboardPage({ onNavigate }) {
   const [tab, setTab] = useState("bookings");
   const [bookings, setBookings] = useState([]);
@@ -90,13 +111,12 @@ export function AdminDashboardPage({ onNavigate }) {
   const [expandedId, setExpandedId] = useState(null);
 
   async function refreshDashboardData(includeReports = false) {
-    const [bookingsData, metricsData, reportsData] = await Promise.all([
+    const [bookingsData, reportsData] = await Promise.all([
       adminGetBookings(),
-      adminGetMetrics(),
       includeReports ? adminGetReports() : Promise.resolve(null),
     ]);
     setBookings(bookingsData);
-    setMetrics(metricsData);
+    setMetrics(buildMetricsFromBookings(bookingsData));
     if (includeReports && reportsData) {
       setReports(reportsData);
     }
@@ -113,13 +133,10 @@ export function AdminDashboardPage({ onNavigate }) {
       setLoading(true);
       setError(null);
       try {
-        const [bookingsData, metricsData] = await Promise.all([
-          adminGetBookings(),
-          adminGetMetrics(),
-        ]);
+        const bookingsData = await adminGetBookings();
         if (!cancelled) {
           setBookings(bookingsData);
-          setMetrics(metricsData);
+          setMetrics(buildMetricsFromBookings(bookingsData));
         }
       } catch (err) {
         if (!cancelled) setError(err.message);

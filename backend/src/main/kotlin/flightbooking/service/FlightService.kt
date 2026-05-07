@@ -132,40 +132,41 @@ object FlightService {
         airportsById: Map<Int, ResultRow>,
         aircraftSeatMap: Map<Int, Int>
     ): List<FlightResponse> {
-        val t0 = System.currentTimeMillis()
-        val allSchedules = FlightSchedulesTable.selectAll().toList()
-        val allScheduledFlights = ScheduledFlightsTable.selectAll().toList()
-        println("findConnectingFlights DB fetch took ${System.currentTimeMillis() - t0}ms")
-
-        val t1 = System.currentTimeMillis()
         val startOfDay = parsedDate?.atStartOfDay()
         val endOfWindow = parsedDate?.plusDays(2)?.atStartOfDay()
 
-        val validFlights = allScheduledFlights.filter {
-            if (startOfDay != null && endOfWindow != null) {
-                it[ScheduledFlightsTable.departureTime] >= startOfDay && it[ScheduledFlightsTable.departureTime] < endOfWindow
-            } else true
+        val firstLegSchedules = FlightSchedulesTable.selectAll()
+            .andWhere { FlightSchedulesTable.departureAirportId eq departureAirportId }
+            .toList()
+        val secondLegSchedules = FlightSchedulesTable.selectAll()
+            .andWhere { FlightSchedulesTable.arrivalAirportId eq arrivalAirportId }
+            .toList()
+        val relevantSchedules = (firstLegSchedules + secondLegSchedules)
+            .distinctBy { it[FlightSchedulesTable.id] }
+        val schedulesById = relevantSchedules.associateBy { it[FlightSchedulesTable.id] }
+        if (schedulesById.isEmpty()) return emptyList()
+
+        val validFlightsQuery = ScheduledFlightsTable.selectAll()
+            .andWhere { ScheduledFlightsTable.scheduleId inList schedulesById.keys.toList() }
+
+        if (startOfDay != null && endOfWindow != null) {
+            validFlightsQuery.andWhere { ScheduledFlightsTable.departureTime greaterEq startOfDay }
+            validFlightsQuery.andWhere { ScheduledFlightsTable.departureTime less endOfWindow }
         }
 
-        val schedulesById = allSchedules.associateBy { it[FlightSchedulesTable.id] }
-        println("findConnectingFlights init maps took ${System.currentTimeMillis() - t1}ms")
+        val validFlights = validFlightsQuery.toList()
 
         val firstLegs = validFlights.filter { flightRow ->
-            val sched = schedulesById[flightRow[ScheduledFlightsTable.scheduleId]]
-            sched != null && sched[FlightSchedulesTable.departureAirportId] == departureAirportId
+            schedulesById[flightRow[ScheduledFlightsTable.scheduleId]]?.get(FlightSchedulesTable.departureAirportId) == departureAirportId
         }
 
         val secondLegs = validFlights.filter { flightRow ->
-            val sched = schedulesById[flightRow[ScheduledFlightsTable.scheduleId]]
-            sched != null && sched[FlightSchedulesTable.arrivalAirportId] == arrivalAirportId
+            schedulesById[flightRow[ScheduledFlightsTable.scheduleId]]?.get(FlightSchedulesTable.arrivalAirportId) == arrivalAirportId
         }
 
         val secondLegsByDep = secondLegs.groupBy { flightRow ->
             schedulesById[flightRow[ScheduledFlightsTable.scheduleId]]!![FlightSchedulesTable.departureAirportId]
         }
-        println("findConnectingFlights prep legs took ${System.currentTimeMillis() - t1}ms. firstLegs=${firstLegs.size}, secondLegs=${secondLegs.size}")
-
-        val t2 = System.currentTimeMillis()
         val connectingFlights = mutableListOf<FlightResponse>()
 
         val depCode = airportsById[departureAirportId]!![AirportsTable.code].uppercase()
@@ -222,7 +223,6 @@ object FlightService {
                 }
             }
         }
-        println("findConnectingFlights loop took ${System.currentTimeMillis() - t2}ms, found ${connectingFlights.size}")
         return connectingFlights
     }
 
