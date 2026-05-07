@@ -576,50 +576,10 @@ object BookingService {
                 rows.sortedByDescending { it[ModificationRequestsTable.createdAt] }
             }
 
-        val flightIds = flightIdByBookingId.values.distinct()
-        val flightsById = if (flightIds.isEmpty()) {
-            emptyMap()
-        } else {
-            val scheduledFlightRows = ScheduledFlightsTable.selectAll()
-                .andWhere { ScheduledFlightsTable.id inList flightIds }
-                .toList()
-            val scheduledFlightsById = scheduledFlightRows.associateBy { it[ScheduledFlightsTable.id] }
-
-            val scheduleIds = scheduledFlightRows.map { it[ScheduledFlightsTable.scheduleId] }.distinct()
-            val scheduleRows = if (scheduleIds.isEmpty()) {
-                emptyList()
-            } else {
-                FlightSchedulesTable.selectAll()
-                    .andWhere { FlightSchedulesTable.id inList scheduleIds }
-                    .toList()
-            }
-            val schedulesById = scheduleRows.associateBy { it[FlightSchedulesTable.id] }
-
-            val airportIds = scheduleRows
-                .flatMap { listOf(it[FlightSchedulesTable.departureAirportId], it[FlightSchedulesTable.arrivalAirportId]) }
-                .distinct()
-            val airportRows = if (airportIds.isEmpty()) {
-                emptyList()
-            } else {
-                AirportsTable.selectAll()
-                    .andWhere { AirportsTable.id inList airportIds }
-                    .toList()
-            }
-            val airportsById = airportRows.associateBy { it[AirportsTable.id] }
-
-            scheduledFlightsById.mapValues { (_, scheduledFlightRow) ->
-                val scheduleRow = schedulesById[scheduledFlightRow[ScheduledFlightsTable.scheduleId]]
-                    ?: return@mapValues null
-                loadFlightSummaryFromRows(scheduledFlightRow, scheduleRow, airportsById)
-            }.mapNotNull { (flightId, summary) ->
-                summary?.let { flightId to it }
-            }.toMap()
-        }
-
         return BookingHydrationContext(
             passengersByBookingId = passengersByBookingId,
             flightIdByBookingId = flightIdByBookingId,
-            flightsById = flightsById,
+            flightsById = emptyMap(),
             modificationsByBookingId = modificationsByBookingId,
         )
     }
