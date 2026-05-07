@@ -1,19 +1,34 @@
-import { useState, useEffect, useMemo } from "react";
+﻿import { useState, useEffect, useMemo } from "react";
 import { SearchForm } from "../components/SearchForm";
-import { getHomeData } from "../services/api";
+import { adminGetReports, getFlights } from "../services/api";
 
-const FALLBACK = [
-  { code: "BCN", city: "Barcelona", flag: "🇪🇸", price: 89 },
-  { code: "AMS", city: "Amsterdam", flag: "🇳🇱", price: 65 },
-  { code: "DXB", city: "Dubai", flag: "🇦🇪", price: 299 },
-  { code: "CDG", city: "Paris", flag: "🇫🇷", price: 74 },
-];
+const AIRPORTS = {
+  LBA: { city: "Leeds", flag: "GB" },
+  LHR: { city: "London", flag: "GB" },
+  LGW: { city: "London", flag: "GB" },
+  MAN: { city: "Manchester", flag: "GB" },
+  EDI: { city: "Edinburgh", flag: "GB" },
+  BHX: { city: "Birmingham", flag: "GB" },
+  BRS: { city: "Bristol", flag: "GB" },
+  NCL: { city: "Newcastle", flag: "GB" },
+  AMS: { city: "Amsterdam", flag: "NL" },
+  CDG: { city: "Paris", flag: "FR" },
+  BCN: { city: "Barcelona", flag: "ES" },
+  MAD: { city: "Madrid", flag: "ES" },
+  FCO: { city: "Rome", flag: "IT" },
+  MXP: { city: "Milan", flag: "IT" },
+  FRA: { city: "Frankfurt", flag: "DE" },
+  MUC: { city: "Munich", flag: "DE" },
+  DXB: { city: "Dubai", flag: "AE" },
+  JFK: { city: "New York", flag: "US" },
+  LAX: { city: "Los Angeles", flag: "US" },
+  DUB: { city: "Dublin", flag: "IE" },
+  CPH: { city: "Copenhagen", flag: "DK" },
+  LIS: { city: "Lisbon", flag: "PT" },
+  ATH: { city: "Athens", flag: "GR" },
+};
 
-const INSPIRATION_CARDS = [
-  { title: "Weekend city break", route: "LBA to Amsterdam", blurb: "Short-haul favourites with easy Friday-to-Sunday timings.", to: "AMS" },
-  { title: "Best for sunshine", route: "LBA to Barcelona", blurb: "Warm-weather escapes that still feel affordable.", to: "BCN" },
-  { title: "Long-haul standout", route: "LBA to Dubai", blurb: "A higher-value trip when you want a bigger experience.", to: "DXB" },
-];
+const DEFAULT_CODES = ["AMS", "BCN", "CDG", "DUB", "MAD", "FCO"];
 
 function destCode(routeStr) {
   const parts = routeStr.split(/→|->/).map((value) => value.trim());
@@ -42,7 +57,25 @@ function buildInspirationBlurb(city, index) {
   return blurbs[index] || `Start with ${city} if you want an easy place to begin searching.`;
 }
 
-// Removed dead code getDestinationCard
+async function getDestinationCard(code, bookingCount = null) {
+  if (!code || !AIRPORTS[code]) return null;
+
+  try {
+    const flights = await getFlights({ from: "LBA", to: code });
+    if (!flights?.length) return null;
+
+    const prices = flights.map((flight) => flight.price).filter((price) => typeof price === "number");
+    return {
+      code,
+      city: AIRPORTS[code].city,
+      flag: AIRPORTS[code].flag,
+      price: prices.length ? Math.min(...prices) : null,
+      bookingCount,
+    };
+  } catch {
+    return null;
+  }
+}
 
 export function HomePage({ onSearch, confirmedBooking, onDismissConfirmation }) {
   const [destinations, setDestinations] = useState([]);
@@ -51,25 +84,43 @@ export function HomePage({ onSearch, confirmedBooking, onDismissConfirmation }) 
   useEffect(() => {
     let cancelled = false;
 
-    async function loadDestinations() {
+    async function loadPopular() {
+      setLoading(true);
+
       try {
-        const homeData = await getHomeData();
-        if (!cancelled && homeData && homeData.destinations) {
-          setDestinations(homeData.destinations.map(c => ({
-            ...c,
-            flag: "" // We no longer use flag emoji as per user request
-          })));
+        const reports = await adminGetReports();
+        const seenDestinations = new Set();
+        const popularCodes = (reports.popularRoutes || [])
+          .map(({ route, count }) => ({ code: destCode(route), count }))
+          .filter(({ code }) => {
+            if (!code || seenDestinations.has(code)) return false;
+            seenDestinations.add(code);
+            return Boolean(AIRPORTS[code]);
+          })
+          .slice(0, 6);
+
+        let cards = (await Promise.all(
+          popularCodes.map(({ code, count }) => getDestinationCard(code, count))
+        )).filter(Boolean);
+
+        if (!cards.length) {
+          cards = (await Promise.all(DEFAULT_CODES.map((code) => getDestinationCard(code)))).filter(Boolean);
+        }
+
+        if (!cancelled) {
+          setDestinations(cards.slice(0, 4));
           setLoading(false);
         }
       } catch {
+        const fallbackCards = (await Promise.all(DEFAULT_CODES.map((code) => getDestinationCard(code)))).filter(Boolean);
         if (!cancelled) {
-          setDestinations(FALLBACK);
+          setDestinations(fallbackCards.slice(0, 4));
           setLoading(false);
         }
       }
     }
 
-    loadDestinations();
+    loadPopular();
     return () => { cancelled = true; };
   }, []);
 
@@ -126,9 +177,7 @@ export function HomePage({ onSearch, confirmedBooking, onDismissConfirmation }) 
               <span className="dest-price">
                 {destination.price ? `from £${destination.price}` : "View flights"}
               </span>
-              {destination.reasonLabel ? (
-                <span className="dest-meta">{destination.reasonLabel}</span>
-              ) : destination.bookingCount ? (
+              {destination.bookingCount ? (
                 <span className="dest-meta">{destination.bookingCount} recent bookings</span>
               ) : (
                 <span className="dest-meta">Available route</span>

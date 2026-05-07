@@ -66,6 +66,17 @@ export async function getProfile() {
 }
 
 // ── Flights ───────────────────────────────────────────────
+let cachedAirports = null;
+export async function getAirports() {
+  if (cachedAirports) return cachedAirports;
+  cachedAirports = await request("/airports");
+  return cachedAirports;
+}
+
+export async function getHomeData() {
+  return request("/home");
+}
+
 export async function getFlights(params = {}) {
   const query = new URLSearchParams(params).toString();
   return request(`/flights${query ? `?${query}` : ""}`);

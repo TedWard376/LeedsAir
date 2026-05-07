@@ -18,18 +18,17 @@ import org.jetbrains.exposed.sql.SqlExpressionBuilder.inList
 import org.jetbrains.exposed.sql.andWhere
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.selectAll
-import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.update
+import org.jetbrains.exposed.sql.transactions.transaction
 import java.math.BigDecimal
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.UUID
 
 object BookingService {
-    private val json =
-        Json {
-            ignoreUnknownKeys = true
-        }
+    private val json = Json {
+        ignoreUnknownKeys = true
+    }
 
     private const val defaultUserId = 1
     private const val defaultBookingStatus = "confirmed"
@@ -47,7 +46,7 @@ object BookingService {
         val dateOfBirth: String = "",
         val passportNumber: String = "",
         val email: String = "",
-        val phone: String = "",
+        val phone: String = ""
     )
 
     @Serializable
@@ -158,221 +157,195 @@ object BookingService {
         val modificationsByBookingId: Map<Int, List<ResultRow>>,
     )
 
-    fun getAllBookings(userId: Int): List<Booking> =
-        transaction {
-            val bookingRows =
-                BookingsTable.selectAll()
-                    .filter { it[BookingsTable.userId] == userId }
-                    .sortedByDescending { it[BookingsTable.createdAt] }
+    fun getAllBookings(userId: Int): List<Booking> = transaction {
+        val bookingRows = BookingsTable.selectAll()
+            .filter { it[BookingsTable.userId] == userId }
+            .sortedByDescending { it[BookingsTable.createdAt] }
 
-            hydrateBookings(bookingRows)
+        hydrateBookings(bookingRows)
+    }
+
+    fun getAllBookingsForAdmin(): List<Booking> = transaction {
+        val bookingRows = BookingsTable.selectAll()
+            .sortedByDescending { it[BookingsTable.createdAt] }
+
+        hydrateBookings(bookingRows)
+    }
+
+    fun getBooking(lastName: String, ref: String): Booking? = transaction {
+        val normalizedRef = ref.trim()
+        val normalizedLastName = lastName.trim().lowercase()
+
+        val bookingRow = BookingsTable.selectAll()
+            .firstOrNull { it[BookingsTable.bookingReference].equals(normalizedRef, ignoreCase = true) }
+            ?: return@transaction null
+
+        val booking = hydrateBooking(bookingRow)
+            ?: return@transaction null
+
+        val matchesLastName = booking.passenger.lastName.trim().lowercase() == normalizedLastName
+        if (!matchesLastName) null else booking
+    }
+
+    fun newBooking(str: String): Booking = transaction {
+        val request = json.decodeFromString<BookingCreateRequest>(str)
+        val flightIds = request.flightId.split(",")
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .map { it.toIntOrNull() ?: throw IllegalArgumentException("flightId must be a numeric flight id or comma-separated numeric ids") }
+
+        val passengers = request.passengers.ifEmpty {
+            listOfNotNull(request.passenger)
+        }.filter { passenger ->
+            passenger.firstName.isNotBlank() || passenger.lastName.isNotBlank() || passenger.email.isNotBlank()
         }
 
-    fun getAllBookingsForAdmin(): List<Booking> =
-        transaction {
-            val bookingRows =
-                BookingsTable.selectAll()
-                    .sortedByDescending { it[BookingsTable.createdAt] }
-
-            hydrateBookings(bookingRows)
+        if (passengers.isEmpty()) {
+            throw IllegalArgumentException("At least one passenger is required")
         }
 
-    fun getBooking(
-        lastName: String,
-        ref: String,
-    ): Booking? =
-        transaction {
-            val normalizedRef = ref.trim()
-            val normalizedLastName = lastName.trim().lowercase()
+        flightIds.forEach { reserveSeats(flightId = it, seatsRequested = passengers.size) }
 
-            val bookingRow =
-                BookingsTable.selectAll()
-                    .firstOrNull { it[BookingsTable.bookingReference].equals(normalizedRef, ignoreCase = true) }
-                    ?: return@transaction null
+        val resolvedUserId = ensureUserExists(request.userId ?: defaultUserId)
+        val bookingReference = generateBookingReference()
+        val now = LocalDateTime.now()
 
-            val booking =
-                hydrateBooking(bookingRow)
-                    ?: return@transaction null
+        val bookingId = BookingsTable.insert { row ->
+            row[userId] = resolvedUserId
+            row[BookingsTable.bookingReference] = bookingReference
+            row[totalPrice] = BigDecimal.valueOf(request.totalPrice).setScale(2)
+            row[status] = defaultBookingStatus
+            row[createdAt] = now
+        }[BookingsTable.id]
 
-            val matchesLastName = booking.passenger.lastName.trim().lowercase() == normalizedLastName
-            if (!matchesLastName) null else booking
-        }
-
-    fun newBooking(str: String): Booking =
-        transaction {
-            val request = json.decodeFromString<BookingCreateRequest>(str)
-            val flightId =
-                request.flightId.trim().toIntOrNull()
-                    ?: throw IllegalArgumentException("flightId must be a numeric flight id")
-
-            val passengers =
-                request.passengers.ifEmpty {
-                    listOfNotNull(request.passenger)
-                }.filter { passenger ->
-                    passenger.firstName.isNotBlank() || passenger.lastName.isNotBlank() || passenger.email.isNotBlank()
-                }
-
-            if (passengers.isEmpty()) {
-                throw IllegalArgumentException("At least one passenger is required")
+        passengers.forEach { passenger ->
+            PassengersTable.insert { row ->
+                row[PassengersTable.bookingId] = bookingId
+                row[firstName] = passenger.firstName.ifBlank { null }
+                row[lastName] = passenger.lastName.ifBlank { null }
+                row[email] = passenger.email.ifBlank { null }
             }
+        }
 
-            reserveSeats(flightId = flightId, seatsRequested = passengers.size)
-
-            val resolvedUserId = ensureUserExists(request.userId ?: defaultUserId)
-            val bookingReference = generateBookingReference()
-            val now = LocalDateTime.now()
-
-            val bookingId =
-                BookingsTable.insert { row ->
-                    row[userId] = resolvedUserId
-                    row[BookingsTable.bookingReference] = bookingReference
-                    row[totalPrice] = BigDecimal.valueOf(request.totalPrice).setScale(2)
-                    row[status] = defaultBookingStatus
-                    row[createdAt] = now
-                }[BookingsTable.id]
-
-            passengers.forEach { passenger ->
-                PassengersTable.insert { row ->
-                    row[PassengersTable.bookingId] = bookingId
-                    row[firstName] = passenger.firstName.ifBlank { null }
-                    row[lastName] = passenger.lastName.ifBlank { null }
-                    row[email] = passenger.email.ifBlank { null }
-                }
-            }
-
+        flightIds.forEach { fId ->
             BookingFlightsTable.insert { row ->
                 row[BookingFlightsTable.bookingId] = bookingId
-                row[BookingFlightsTable.flightId] = flightId
+                row[BookingFlightsTable.flightId] = fId
             }
+        }
 
-            saveDummyPayment(
+        saveDummyPayment(
+            bookingId = bookingId,
+            amount = BigDecimal.valueOf(request.totalPrice).setScale(2),
+            payment = request.payment
+        )
+
+        val requestedUserId = request.userId?.takeIf { it > 0 }
+        if (requestedUserId != null) {
+            LoyaltyService.awardPointsForBooking(
+                userId = requestedUserId,
                 bookingId = bookingId,
-                amount = BigDecimal.valueOf(request.totalPrice).setScale(2),
-                payment = request.payment,
-            )
-
-            val requestedUserId = request.userId?.takeIf { it > 0 }
-            if (requestedUserId != null) {
-                LoyaltyService.awardPointsForBooking(
-                    userId = requestedUserId,
-                    bookingId = bookingId,
-                    totalPrice = request.totalPrice,
-                    travelClass = request.travelClass,
-                )
-            }
-
-            hydrateBookingById(bookingId) ?: throw IllegalStateException("Booking was created but could not be loaded")
-        }
-
-    fun cancelBooking(
-        bookingId: Int,
-        requestBody: String? = null,
-    ): Booking =
-        transaction {
-            val bookingRow = loadBookingRowOrThrow(bookingId)
-            val currentStatus = bookingRow[BookingsTable.status]
-            val cancelRequest =
-                requestBody
-                    ?.takeIf { it.isNotBlank() }
-                    ?.let { json.decodeFromString<BookingCancelRequest>(it) }
-            val cancellationReason = cancelRequest?.reason?.trim().takeUnless { it.isNullOrBlank() }
-
-            if (currentStatus == cancelledBookingStatus) {
-                return@transaction hydrateBooking(bookingRow)
-                    ?: throw IllegalStateException("Cancelled booking could not be loaded")
-            }
-
-            if (currentStatus == checkedInBookingStatus) {
-                throw IllegalArgumentException("Checked-in bookings cannot be cancelled")
-            }
-
-            restoreSeatsForBooking(bookingId)
-            updateBookingStatus(bookingId, cancelledBookingStatus)
-            recordModificationRequest(
-                bookingId = bookingId,
-                requestType = "cancellation",
-                description = cancellationReason ?: "Cancelled by customer from manage booking.",
-                status = "completed",
-            )
-
-            hydrateBookingById(bookingId) ?: throw IllegalStateException("Cancelled booking could not be loaded")
-        }
-
-    fun checkInBooking(bookingId: Int): BoardingPass =
-        transaction {
-            val bookingRow = loadBookingRowOrThrow(bookingId)
-            val currentStatus = bookingRow[BookingsTable.status]
-
-            if (currentStatus == cancelledBookingStatus) {
-                throw IllegalArgumentException("Cancelled bookings cannot be checked in")
-            }
-
-            if (currentStatus != checkedInBookingStatus) {
-                updateBookingStatus(bookingId, checkedInBookingStatus)
-            }
-
-            val hydrated =
-                hydrateBookingById(bookingId)
-                    ?: throw IllegalStateException("Checked-in booking could not be loaded")
-
-            val departureTime = hydrated.flight?.departureTime ?: "00:00"
-            val boardingTime =
-                runCatching {
-                    java.time.LocalTime.parse(departureTime).minusMinutes(45).toString()
-                }.getOrElse { "00:00" }
-
-            BoardingPass(
-                bookingId = hydrated.id,
-                bookingReference = hydrated.bookingReference,
-                seat = defaultSeatLabel,
-                gate = generateGate(hydrated.id),
-                boardingTime = boardingTime,
-                status = "Checked In",
+                totalPrice = request.totalPrice,
+                travelClass = request.travelClass,
             )
         }
 
-    fun modifyBooking(
-        bookingId: Int,
-        requestBody: String,
-    ): Booking =
-        transaction {
-            val bookingRow = loadBookingRowOrThrow(bookingId)
-            val currentStatus = bookingRow[BookingsTable.status]
-            if (currentStatus == cancelledBookingStatus) {
-                throw IllegalArgumentException("Cancelled bookings cannot be modified")
-            }
+        hydrateBookingById(bookingId) ?: throw IllegalStateException("Booking was created but could not be loaded")
+    }
 
-            val request = json.decodeFromString<BookingModifyRequest>(requestBody)
+    fun cancelBooking(bookingId: Int, requestBody: String? = null): Booking = transaction {
+        val bookingRow = loadBookingRowOrThrow(bookingId)
+        val currentStatus = bookingRow[BookingsTable.status]
+        val cancelRequest = requestBody
+            ?.takeIf { it.isNotBlank() }
+            ?.let { json.decodeFromString<BookingCancelRequest>(it) }
+        val cancellationReason = cancelRequest?.reason?.trim().takeUnless { it.isNullOrBlank() }
 
-            if (request.totalPrice != null) {
-                BookingsTable.update({ BookingsTable.id eq bookingId }) { row ->
-                    row[totalPrice] = BigDecimal.valueOf(request.totalPrice).setScale(2)
-                }
-            }
-
-            val normalizedStatus = request.status?.trim()?.lowercase()
-            if (!normalizedStatus.isNullOrBlank()) {
-                updateBookingStatus(bookingId, normalizedStatus)
-            }
-
-            val requestType = request.requestType?.trim().takeUnless { it.isNullOrBlank() } ?: "general"
-            val requestStatus = if (requestType.equals("extra_request", ignoreCase = true)) "completed" else "pending"
-
-            recordModificationRequest(
-                bookingId = bookingId,
-                requestType = requestType,
-                description = request.description?.trim().takeUnless { it.isNullOrBlank() },
-                status = requestStatus,
-            )
-
-            hydrateBookingById(bookingId) ?: throw IllegalStateException("Modified booking could not be loaded")
+        if (currentStatus == cancelledBookingStatus) {
+            return@transaction hydrateBooking(bookingRow)
+                ?: throw IllegalStateException("Cancelled booking could not be loaded")
         }
 
-    fun applyApprovedRequest(
-        bookingId: Int,
-        requestType: String,
-        description: String?,
-    ) = transaction {
+        if (currentStatus == checkedInBookingStatus) {
+            throw IllegalArgumentException("Checked-in bookings cannot be cancelled")
+        }
+
+        restoreSeatsForBooking(bookingId)
+        updateBookingStatus(bookingId, cancelledBookingStatus)
+        recordModificationRequest(
+            bookingId = bookingId,
+            requestType = "cancellation",
+            description = cancellationReason ?: "Cancelled by customer from manage booking.",
+            status = "completed",
+        )
+
+        hydrateBookingById(bookingId) ?: throw IllegalStateException("Cancelled booking could not be loaded")
+    }
+
+    fun checkInBooking(bookingId: Int): BoardingPass = transaction {
+        val bookingRow = loadBookingRowOrThrow(bookingId)
+        val currentStatus = bookingRow[BookingsTable.status]
+
+        if (currentStatus == cancelledBookingStatus) {
+            throw IllegalArgumentException("Cancelled bookings cannot be checked in")
+        }
+
+        if (currentStatus != checkedInBookingStatus) {
+            updateBookingStatus(bookingId, checkedInBookingStatus)
+        }
+
+        val hydrated = hydrateBookingById(bookingId)
+            ?: throw IllegalStateException("Checked-in booking could not be loaded")
+
+        val departureTime = hydrated.flight?.departureTime ?: "00:00"
+        val boardingTime = runCatching {
+            java.time.LocalTime.parse(departureTime).minusMinutes(45).toString()
+        }.getOrElse { "00:00" }
+
+        BoardingPass(
+            bookingId = hydrated.id,
+            bookingReference = hydrated.bookingReference,
+            seat = defaultSeatLabel,
+            gate = generateGate(hydrated.id),
+            boardingTime = boardingTime,
+            status = "Checked In",
+        )
+    }
+
+    fun modifyBooking(bookingId: Int, requestBody: String): Booking = transaction {
+        val bookingRow = loadBookingRowOrThrow(bookingId)
+        val currentStatus = bookingRow[BookingsTable.status]
+        if (currentStatus == cancelledBookingStatus) {
+            throw IllegalArgumentException("Cancelled bookings cannot be modified")
+        }
+
+        val request = json.decodeFromString<BookingModifyRequest>(requestBody)
+
+        if (request.totalPrice != null) {
+            BookingsTable.update({ BookingsTable.id eq bookingId }) { row ->
+                row[totalPrice] = BigDecimal.valueOf(request.totalPrice).setScale(2)
+            }
+        }
+
+        val normalizedStatus = request.status?.trim()?.lowercase()
+        if (!normalizedStatus.isNullOrBlank()) {
+            updateBookingStatus(bookingId, normalizedStatus)
+        }
+
+        val requestType = request.requestType?.trim().takeUnless { it.isNullOrBlank() } ?: "general"
+        val requestStatus = if (requestType.equals("extra_request", ignoreCase = true)) "completed" else "pending"
+
+        recordModificationRequest(
+            bookingId = bookingId,
+            requestType = requestType,
+            description = request.description?.trim().takeUnless { it.isNullOrBlank() },
+            status = requestStatus,
+        )
+
+        hydrateBookingById(bookingId) ?: throw IllegalStateException("Modified booking could not be loaded")
+    }
+
+    fun applyApprovedRequest(bookingId: Int, requestType: String, description: String?) = transaction {
         val normalizedType = requestType.trim().lowercase()
         val normalizedDescription = description.orEmpty()
         when (normalizedType) {
@@ -386,10 +359,7 @@ object BookingService {
             ?: throw IllegalArgumentException("Booking not found")
     }
 
-    private fun applyApprovedNameChange(
-        bookingId: Int,
-        description: String,
-    ) {
+    private fun applyApprovedNameChange(bookingId: Int, description: String) {
         val newName = extractNameChangeValue(description) ?: return
         val parts = newName.split(Regex("\\s+")).filter { it.isNotBlank() }
         if (parts.isEmpty()) return
@@ -405,10 +375,7 @@ object BookingService {
         }
     }
 
-    private fun applyApprovedDateChange(
-        bookingId: Int,
-        description: String,
-    ) {
+    private fun applyApprovedDateChange(bookingId: Int, description: String) {
         val newFlightId = extractRequestedFlightId(description) ?: return
         val existingLink = BookingFlightsTable.selectAll().firstOrNull { it[BookingFlightsTable.bookingId] == bookingId } ?: return
         val currentFlightId = existingLink[BookingFlightsTable.flightId]
@@ -425,25 +392,20 @@ object BookingService {
     }
 
     private fun extractNameChangeValue(description: String): String? {
-        val match =
-            Regex("""Requested passenger name change to:\s*(.+)""", RegexOption.IGNORE_CASE)
-                .find(description)
-                ?: return null
+        val match = Regex("""Requested passenger name change to:\s*(.+)""", RegexOption.IGNORE_CASE)
+            .find(description)
+            ?: return null
         return match.groupValues.getOrNull(1)?.trim()?.takeIf { it.isNotBlank() }
     }
 
     private fun extractRequestedFlightId(description: String): Int? {
-        val match =
-            Regex("""Requested flight id:\s*(\d+)""", RegexOption.IGNORE_CASE)
-                .find(description)
-                ?: return null
+        val match = Regex("""Requested flight id:\s*(\d+)""", RegexOption.IGNORE_CASE)
+            .find(description)
+            ?: return null
         return match.groupValues.getOrNull(1)?.toIntOrNull()
     }
 
-    private fun updateBookingStatus(
-        bookingId: Int,
-        status: String,
-    ) {
+    private fun updateBookingStatus(bookingId: Int, status: String) {
         BookingsTable.update({ BookingsTable.id eq bookingId }) { row ->
             row[BookingsTable.status] = status
         }
@@ -466,21 +428,22 @@ object BookingService {
     }
 
     private fun restoreSeatsForBooking(bookingId: Int) {
-        val flightId =
-            BookingFlightsTable.selectAll()
-                .firstOrNull { it[BookingFlightsTable.bookingId] == bookingId }
-                ?.get(BookingFlightsTable.flightId)
-                ?: return
+        val flightIds = BookingFlightsTable.selectAll()
+            .filter { it[BookingFlightsTable.bookingId] == bookingId }
+            .map { it[BookingFlightsTable.flightId] }
+
+        if (flightIds.isEmpty()) return
 
         val passengerCount = PassengersTable.selectAll().count { it[PassengersTable.bookingId] == bookingId }
-        val scheduledFlightRow =
-            ScheduledFlightsTable.selectAll()
-                .firstOrNull { it[ScheduledFlightsTable.id] == flightId }
-                ?: return
+        val scheduledFlightRows = ScheduledFlightsTable.selectAll()
+            .filter { it[ScheduledFlightsTable.id] in flightIds }
 
-        val currentAvailableSeats = scheduledFlightRow[ScheduledFlightsTable.availableSeats] ?: return
-        ScheduledFlightsTable.update({ ScheduledFlightsTable.id eq flightId }) { row ->
-            row[availableSeats] = currentAvailableSeats + passengerCount
+        for (flightRow in scheduledFlightRows) {
+            val fId = flightRow[ScheduledFlightsTable.id]
+            val currentAvailableSeats = flightRow[ScheduledFlightsTable.availableSeats] ?: continue
+            ScheduledFlightsTable.update({ ScheduledFlightsTable.id eq fId }) { row ->
+                row[availableSeats] = currentAvailableSeats + passengerCount
+            }
         }
     }
 
@@ -490,20 +453,16 @@ object BookingService {
         return "$gateLetter$gateNumber"
     }
 
-    private fun reserveSeats(
-        flightId: Int,
-        seatsRequested: Int,
-    ) {
-        val scheduledFlightRow =
-            ScheduledFlightsTable.selectAll()
-                .firstOrNull { it[ScheduledFlightsTable.id] == flightId }
-                ?: throw IllegalArgumentException("flightId does not exist in scheduled_flights")
+    private fun reserveSeats(flightId: Int, seatsRequested: Int) {
+        val scheduledFlightRow = ScheduledFlightsTable.selectAll()
+            .firstOrNull { it[ScheduledFlightsTable.id] == flightId }
+            ?: throw IllegalArgumentException("flightId does not exist in scheduled_flights")
 
         val currentAvailableSeats = scheduledFlightRow[ScheduledFlightsTable.availableSeats]
         if (currentAvailableSeats != null) {
             if (currentAvailableSeats < seatsRequested) {
                 throw IllegalArgumentException(
-                    "Not enough seats available. Requested $seatsRequested but only $currentAvailableSeats left",
+                    "Not enough seats available. Requested $seatsRequested but only $currentAvailableSeats left"
                 )
             }
 
@@ -535,12 +494,11 @@ object BookingService {
         var suffix = 0
 
         while (true) {
-            val candidate =
-                if (suffix == 0) {
-                    "LEEDS$timestamp"
-                } else {
-                    "LEEDS$timestamp$suffix"
-                }
+            val candidate = if (suffix == 0) {
+                "LEEDS$timestamp"
+            } else {
+                "LEEDS$timestamp$suffix"
+            }
 
             val exists = BookingsTable.selectAll().any { it[BookingsTable.bookingReference] == candidate }
             if (!exists) return candidate
@@ -548,11 +506,7 @@ object BookingService {
         }
     }
 
-    private fun saveDummyPayment(
-        bookingId: Int,
-        amount: BigDecimal,
-        payment: PaymentDetails?,
-    ) {
+    private fun saveDummyPayment(bookingId: Int, amount: BigDecimal, payment: PaymentDetails?) {
         val normalizedCardNumber = payment?.cardNumber?.filter(Char::isDigit).orEmpty()
         val cardLast4 = normalizedCardNumber.takeLast(4).ifBlank { "4242" }
         val providerPaymentMethodId = "pm_dummy_${UUID.randomUUID().toString().replace("-", "").take(16)}"
@@ -577,15 +531,14 @@ object BookingService {
         }
     }
 
-    internal fun detectCardBrand(cardNumber: String): String =
-        when {
-            cardNumber.startsWith("4") -> "Visa"
-            cardNumber.startsWith("5") -> "Mastercard"
-            cardNumber.startsWith("34") || cardNumber.startsWith("37") -> "American Express"
-            cardNumber.startsWith("6") -> "Discover"
-            cardNumber.isBlank() -> "Dummy"
-            else -> "Other"
-        }
+    internal fun detectCardBrand(cardNumber: String): String = when {
+        cardNumber.startsWith("4") -> "Visa"
+        cardNumber.startsWith("5") -> "Mastercard"
+        cardNumber.startsWith("34") || cardNumber.startsWith("37") -> "American Express"
+        cardNumber.startsWith("6") -> "Discover"
+        cardNumber.isBlank() -> "Dummy"
+        else -> "Other"
+    }
 
     private fun hydrateBookingById(bookingId: Int): Booking? {
         val row = BookingsTable.selectAll().firstOrNull { it[BookingsTable.id] == bookingId } ?: return null
@@ -601,83 +554,32 @@ object BookingService {
     private fun buildHydrationContext(bookingRows: List<ResultRow>): BookingHydrationContext {
         val bookingIds = bookingRows.map { it[BookingsTable.id] }
 
-        val passengerRows =
-            PassengersTable.selectAll()
-                .andWhere { PassengersTable.bookingId inList bookingIds }
-                .toList()
-        val passengersByBookingId =
-            passengerRows
-                .sortedBy { it[PassengersTable.id] }
-                .associateBy { it[PassengersTable.bookingId] }
+        val passengerRows = PassengersTable.selectAll()
+            .andWhere { PassengersTable.bookingId inList bookingIds }
+            .toList()
+        val passengersByBookingId = passengerRows
+            .sortedBy { it[PassengersTable.id] }
+            .associateBy { it[PassengersTable.bookingId] }
 
-        val bookingFlightRows =
-            BookingFlightsTable.selectAll()
-                .andWhere { BookingFlightsTable.bookingId inList bookingIds }
-                .toList()
-        val flightIdByBookingId =
-            bookingFlightRows.associate { row ->
-                row[BookingFlightsTable.bookingId] to row[BookingFlightsTable.flightId]
-            }
+        val bookingFlightRows = BookingFlightsTable.selectAll()
+            .andWhere { BookingFlightsTable.bookingId inList bookingIds }
+            .toList()
+        val flightIdByBookingId = bookingFlightRows.associate { row ->
+            row[BookingFlightsTable.bookingId] to row[BookingFlightsTable.flightId]
+        }
 
-        val modificationsByBookingId =
-            ModificationRequestsTable.selectAll()
-                .andWhere { ModificationRequestsTable.bookingId inList bookingIds }
-                .toList()
-                .groupBy { it[ModificationRequestsTable.bookingId] }
-                .mapValues { (_, rows) ->
-                    rows.sortedByDescending { it[ModificationRequestsTable.createdAt] }
-                }
-
-        val flightIds = flightIdByBookingId.values.distinct()
-        val flightsById =
-            if (flightIds.isEmpty()) {
-                emptyMap()
-            } else {
-                val scheduledFlightRows =
-                    ScheduledFlightsTable.selectAll()
-                        .andWhere { ScheduledFlightsTable.id inList flightIds }
-                        .toList()
-                val scheduledFlightsById = scheduledFlightRows.associateBy { it[ScheduledFlightsTable.id] }
-
-                val scheduleIds = scheduledFlightRows.map { it[ScheduledFlightsTable.scheduleId] }.distinct()
-                val scheduleRows =
-                    if (scheduleIds.isEmpty()) {
-                        emptyList()
-                    } else {
-                        FlightSchedulesTable.selectAll()
-                            .andWhere { FlightSchedulesTable.id inList scheduleIds }
-                            .toList()
-                    }
-                val schedulesById = scheduleRows.associateBy { it[FlightSchedulesTable.id] }
-
-                val airportIds =
-                    scheduleRows
-                        .flatMap { listOf(it[FlightSchedulesTable.departureAirportId], it[FlightSchedulesTable.arrivalAirportId]) }
-                        .distinct()
-                val airportRows =
-                    if (airportIds.isEmpty()) {
-                        emptyList()
-                    } else {
-                        AirportsTable.selectAll()
-                            .andWhere { AirportsTable.id inList airportIds }
-                            .toList()
-                    }
-                val airportsById = airportRows.associateBy { it[AirportsTable.id] }
-
-                scheduledFlightsById.mapValues { (_, scheduledFlightRow) ->
-                    val scheduleRow =
-                        schedulesById[scheduledFlightRow[ScheduledFlightsTable.scheduleId]]
-                            ?: return@mapValues null
-                    loadFlightSummaryFromRows(scheduledFlightRow, scheduleRow, airportsById)
-                }.mapNotNull { (flightId, summary) ->
-                    summary?.let { flightId to it }
-                }.toMap()
+        val modificationsByBookingId = ModificationRequestsTable.selectAll()
+            .andWhere { ModificationRequestsTable.bookingId inList bookingIds }
+            .toList()
+            .groupBy { it[ModificationRequestsTable.bookingId] }
+            .mapValues { (_, rows) ->
+                rows.sortedByDescending { it[ModificationRequestsTable.createdAt] }
             }
 
         return BookingHydrationContext(
             passengersByBookingId = passengersByBookingId,
             flightIdByBookingId = flightIdByBookingId,
-            flightsById = flightsById,
+            flightsById = emptyMap(),
             modificationsByBookingId = modificationsByBookingId,
         )
     }
@@ -687,34 +589,33 @@ object BookingService {
         return hydrateBooking(bookingRow, context)
     }
 
-    private fun hydrateBooking(
-        bookingRow: ResultRow,
-        context: BookingHydrationContext,
-    ): Booking? {
+    private fun hydrateBooking(bookingRow: ResultRow, context: BookingHydrationContext): Booking? {
         val bookingId = bookingRow[BookingsTable.id]
         val bookingReference = bookingRow[BookingsTable.bookingReference]
 
-        val passenger =
-            context.passengersByBookingId[bookingId]
-                ?.toPassenger()
-                ?: Passenger()
+        val passenger = context.passengersByBookingId[bookingId]
+            ?.toPassenger()
+            ?: Passenger()
 
-        val flightId = context.flightIdByBookingId[bookingId]
+        val flightIds = BookingFlightsTable.selectAll()
+            .filter { it[BookingFlightsTable.bookingId] == bookingId }
+            .map { it[BookingFlightsTable.flightId] }
 
-        val flight = flightId?.let { context.flightsById[it] ?: loadFlightSummary(it) }
-        val modificationHistory = context.modificationsByBookingId[bookingId].orEmpty()
+        val flight = if (flightIds.isNotEmpty()) loadFlightSummary(flightIds) else null
+        val modificationHistory = ModificationRequestsTable.selectAll()
+            .filter { it[ModificationRequestsTable.bookingId] == bookingId }
+            .sortedByDescending { it[ModificationRequestsTable.createdAt] }
         val latestModification = modificationHistory.firstOrNull()
-        val cancellationModification =
-            modificationHistory.firstOrNull {
-                it[ModificationRequestsTable.requestType].equals("cancellation", ignoreCase = true)
-            }
+        val cancellationModification = modificationHistory.firstOrNull {
+            it[ModificationRequestsTable.requestType].equals("cancellation", ignoreCase = true)
+        }
 
         return Booking(
             id = bookingId,
             ref = bookingReference,
             bookingReference = bookingReference,
             userId = bookingRow[BookingsTable.userId],
-            flightId = flightId?.toString().orEmpty(),
+            flightId = flightIds.joinToString(","),
             travelClass = defaultTravelClass,
             seat = defaultSeatLabel,
             extras = emptyList(),
@@ -728,67 +629,73 @@ object BookingService {
             modificationRequestedAt = latestModification?.get(ModificationRequestsTable.createdAt)?.toString(),
             cancellationReason = cancellationModification?.get(ModificationRequestsTable.description),
             cancelledAt = cancellationModification?.get(ModificationRequestsTable.createdAt)?.toString(),
-            requestHistory =
-                modificationHistory.map { row ->
-                    BookingRequestHistoryItem(
-                        id = row[ModificationRequestsTable.id],
-                        requestType = row[ModificationRequestsTable.requestType],
-                        status = row[ModificationRequestsTable.status],
-                        description = row[ModificationRequestsTable.description],
-                        createdAt = row[ModificationRequestsTable.createdAt].toString(),
-                    )
-                },
+            requestHistory = modificationHistory.map { row ->
+                BookingRequestHistoryItem(
+                    id = row[ModificationRequestsTable.id],
+                    requestType = row[ModificationRequestsTable.requestType],
+                    status = row[ModificationRequestsTable.status],
+                    description = row[ModificationRequestsTable.description],
+                    createdAt = row[ModificationRequestsTable.createdAt].toString(),
+                )
+            },
         )
     }
 
-    internal fun displayStatus(status: String): String =
-        when (status.lowercase()) {
-            checkedInBookingStatus -> "CheckedIn"
-            cancelledBookingStatus -> "Cancelled"
-            defaultBookingStatus -> "Confirmed"
-            else -> status.replaceFirstChar { it.uppercase() }
-        }
-
-    private fun loadFlightSummary(flightId: Int): BookingFlightSummary? {
-        val scheduledFlightRow =
-            ScheduledFlightsTable.selectAll()
-                .firstOrNull { it[ScheduledFlightsTable.id] == flightId }
-                ?: return null
-        val scheduleRow =
-            FlightSchedulesTable.selectAll()
-                .firstOrNull { it[FlightSchedulesTable.id] == scheduledFlightRow[ScheduledFlightsTable.scheduleId] }
-                ?: return null
-        val airportsById = AirportsTable.selectAll().associateBy { it[AirportsTable.id] }
-
-        return loadFlightSummaryFromRows(scheduledFlightRow, scheduleRow, airportsById)
+    internal fun displayStatus(status: String): String = when (status.lowercase()) {
+        checkedInBookingStatus -> "CheckedIn"
+        cancelledBookingStatus -> "Cancelled"
+        defaultBookingStatus -> "Confirmed"
+        else -> status.replaceFirstChar { it.uppercase() }
     }
 
-    private fun loadFlightSummaryFromRows(
-        scheduledFlightRow: ResultRow,
-        scheduleRow: ResultRow,
-        airportsById: Map<Int, ResultRow>,
-    ): BookingFlightSummary {
-        val departureAirport = airportsById[scheduleRow[FlightSchedulesTable.departureAirportId]]
-        val arrivalAirport = airportsById[scheduleRow[FlightSchedulesTable.arrivalAirportId]]
-        val departureDateTime = scheduledFlightRow[ScheduledFlightsTable.departureTime]
-        val arrivalDateTime = scheduledFlightRow[ScheduledFlightsTable.arrivalTime]
+    private fun loadFlightSummary(flightIds: List<Int>): BookingFlightSummary? {
+        if (flightIds.isEmpty()) return null
+
+        val scheduledFlightsRows = ScheduledFlightsTable.selectAll()
+            .filter { it[ScheduledFlightsTable.id] in flightIds }
+            .sortedBy { it[ScheduledFlightsTable.departureTime] }
+        
+        if (scheduledFlightsRows.isEmpty()) return null
+
+        val scheduleRows = FlightSchedulesTable.selectAll()
+            .filter { row -> scheduledFlightsRows.any { it[ScheduledFlightsTable.scheduleId] == row[FlightSchedulesTable.id] } }
+            .associateBy { it[FlightSchedulesTable.id] }
+
+        val airportsById = AirportsTable.selectAll().associateBy { it[AirportsTable.id] }
+
+        // Take departure from the first leg and arrival from the last leg
+        val firstLeg = scheduledFlightsRows.first()
+        val lastLeg = scheduledFlightsRows.last()
+
+        val firstSchedule = scheduleRows[firstLeg[ScheduledFlightsTable.scheduleId]] ?: return null
+        val lastSchedule = scheduleRows[lastLeg[ScheduledFlightsTable.scheduleId]] ?: return null
+
+        val departureAirportId = firstSchedule[FlightSchedulesTable.departureAirportId]
+        val arrivalAirportId = lastSchedule[FlightSchedulesTable.arrivalAirportId]
+
+        val departureAirport = airportsById[departureAirportId]
+        val arrivalAirport = airportsById[arrivalAirportId]
+        val departureDateTime = firstLeg[ScheduledFlightsTable.departureTime]
+        val arrivalDateTime = lastLeg[ScheduledFlightsTable.arrivalTime]
+
+        val isConnecting = flightIds.size > 1
+        val flightNumber = if (isConnecting) "Multiple" else firstSchedule[FlightSchedulesTable.flightNumber]
 
         return BookingFlightSummary(
-            id = scheduledFlightRow[ScheduledFlightsTable.id],
-            flightNumber = scheduleRow[FlightSchedulesTable.flightNumber],
+            id = firstLeg[ScheduledFlightsTable.id],
+            flightNumber = flightNumber,
             from = departureAirport?.get(AirportsTable.code),
             to = arrivalAirport?.get(AirportsTable.code),
             departureTime = departureDateTime.toLocalTime().toString(),
             arrivalTime = arrivalDateTime.toLocalTime().toString(),
             departureDate = departureDateTime.toLocalDate().toString(),
-            stops = scheduleRow[FlightSchedulesTable.stops],
+            stops = if (isConnecting) flightIds.size - 1 else firstSchedule[FlightSchedulesTable.stops],
         )
     }
 
-    private fun ResultRow.toPassenger(): Passenger =
-        Passenger(
-            firstName = this[PassengersTable.firstName].orEmpty(),
-            lastName = this[PassengersTable.lastName].orEmpty(),
-            email = this[PassengersTable.email].orEmpty(),
-        )
+    private fun ResultRow.toPassenger(): Passenger = Passenger(
+        firstName = this[PassengersTable.firstName].orEmpty(),
+        lastName = this[PassengersTable.lastName].orEmpty(),
+        email = this[PassengersTable.email].orEmpty(),
+    )
 }
