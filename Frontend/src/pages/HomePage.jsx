@@ -42,25 +42,7 @@ function buildInspirationBlurb(city, index) {
   return blurbs[index] || `Start with ${city} if you want an easy place to begin searching.`;
 }
 
-async function getDestinationCard(code, bookingCount = null) {
-  if (!code || !AIRPORTS[code]) return null;
-
-  try {
-    const flights = await getFlights({ from: "LBA", to: code });
-    if (!flights?.length) return null;
-
-    const prices = flights.map((flight) => flight.price).filter((price) => typeof price === "number");
-    return {
-      code,
-      city: AIRPORTS[code].city,
-      flag: AIRPORTS[code].flag,
-      price: prices.length ? Math.min(...prices) : null,
-      bookingCount,
-    };
-  } catch {
-    return null;
-  }
-}
+// Removed dead code getDestinationCard
 
 export function HomePage({ onSearch, confirmedBooking, onDismissConfirmation }) {
   const [destinations, setDestinations] = useState([]);
@@ -80,9 +62,8 @@ export function HomePage({ onSearch, confirmedBooking, onDismissConfirmation }) 
           setLoading(false);
         }
       } catch {
-        const fallbackCards = (await Promise.all(DEFAULT_CODES.map((code) => getDestinationCard(code)))).filter(Boolean);
         if (!cancelled) {
-          setDestinations(fallbackCards.slice(0, 4));
+          setDestinations(FALLBACK);
           setLoading(false);
         }
       }
