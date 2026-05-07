@@ -273,16 +273,16 @@ object AdminService {
 
         val reports =
             AdminReports(
-            cancellationRate = round2(cancellationRate),
-            peakBookingHour = peakBookingHour,
-            bookingsPerFlight = bookingsPerFlight,
-            popularRoutes = popularRoutes,
-            revenuePerRoute = revenuePerRoute,
-            bookingsByStatus = bookingsByStatus,
-            cancellationReasons = cancellationReasons,
-            loyaltyMix = loyaltyMix,
-            monthlyRevenue = monthlyRevenue,
-        )
+                cancellationRate = round2(cancellationRate),
+                peakBookingHour = peakBookingHour,
+                bookingsPerFlight = bookingsPerFlight,
+                popularRoutes = popularRoutes,
+                revenuePerRoute = revenuePerRoute,
+                bookingsByStatus = bookingsByStatus,
+                cancellationReasons = cancellationReasons,
+                loyaltyMix = loyaltyMix,
+                monthlyRevenue = monthlyRevenue,
+            )
         cachedReports = now to reports
         return reports
     }
@@ -294,35 +294,35 @@ object AdminService {
 
         val complaints =
             transaction {
-            val usersById = UsersTable.selectAll().associateBy { it[UsersTable.id] }
-            val bookingsById = BookingsTable.selectAll().associateBy { it[BookingsTable.id] }
+                val usersById = UsersTable.selectAll().associateBy { it[UsersTable.id] }
+                val bookingsById = BookingsTable.selectAll().associateBy { it[BookingsTable.id] }
 
-            ComplaintsTable.selectAll()
-                .sortedByDescending { it[ComplaintsTable.createdAt] }
-                .map { row ->
-                    val user = usersById[row[ComplaintsTable.userId]]
-                    val bookingReference =
-                        row[ComplaintsTable.bookingId]?.let { bookingId ->
-                            bookingsById[bookingId]?.get(BookingsTable.bookingReference)
-                        }
-                    val customerName =
-                        listOfNotNull(
-                            user?.get(UsersTable.firstName)?.takeIf { it.isNotBlank() },
-                            user?.get(UsersTable.lastName)?.takeIf { it.isNotBlank() },
-                        ).joinToString(" ").ifBlank { "Guest customer" }
+                ComplaintsTable.selectAll()
+                    .sortedByDescending { it[ComplaintsTable.createdAt] }
+                    .map { row ->
+                        val user = usersById[row[ComplaintsTable.userId]]
+                        val bookingReference =
+                            row[ComplaintsTable.bookingId]?.let { bookingId ->
+                                bookingsById[bookingId]?.get(BookingsTable.bookingReference)
+                            }
+                        val customerName =
+                            listOfNotNull(
+                                user?.get(UsersTable.firstName)?.takeIf { it.isNotBlank() },
+                                user?.get(UsersTable.lastName)?.takeIf { it.isNotBlank() },
+                            ).joinToString(" ").ifBlank { "Guest customer" }
 
-                    AdminComplaint(
-                        id = row[ComplaintsTable.id],
-                        bookingReference = bookingReference,
-                        customerName = customerName,
-                        customerEmail = user?.get(UsersTable.email),
-                        subject = row[ComplaintsTable.subject],
-                        message = row[ComplaintsTable.message],
-                        status = row[ComplaintsTable.status].replaceFirstChar { it.uppercase() },
-                        createdAt = row[ComplaintsTable.createdAt].toString(),
-                    )
-                }
-        }
+                        AdminComplaint(
+                            id = row[ComplaintsTable.id],
+                            bookingReference = bookingReference,
+                            customerName = customerName,
+                            customerEmail = user?.get(UsersTable.email),
+                            subject = row[ComplaintsTable.subject],
+                            message = row[ComplaintsTable.message],
+                            status = row[ComplaintsTable.status].replaceFirstChar { it.uppercase() },
+                            createdAt = row[ComplaintsTable.createdAt].toString(),
+                        )
+                    }
+            }
         cachedComplaints = now to complaints
         return complaints
     }

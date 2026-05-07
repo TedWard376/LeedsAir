@@ -7,12 +7,13 @@ const DAYS   = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 // ── Hook: fetch lowest prices per day for a route + month ─
 function useMonthPrices(from, to) {
   const [prices,  setPrices]  = useState({}); // { "2026-04-15": 89, ... }
-  const [loading, setLoading] = useState(false);
+  const [loadedRouteKey, setLoadedRouteKey] = useState("");
+  const hasRoute = Boolean(from && to);
+  const routeKey = hasRoute ? `${from}-${to}` : "";
 
   useEffect(() => {
-    if (!from || !to) { setPrices({}); return; }
+    if (!hasRoute) return;
     let cancelled = false;
-    setLoading(true);
 
     // Removed old dates building logic
 
@@ -31,19 +32,22 @@ function useMonthPrices(from, to) {
           });
         }
         setPrices(map);
-        setLoading(false);
+        setLoadedRouteKey(routeKey);
       })
       .catch(() => {
         if (!cancelled) {
           setPrices({});
-          setLoading(false);
+          setLoadedRouteKey(routeKey);
         }
       });
 
     return () => { cancelled = true; };
-  }, [from, to]);
+  }, [from, to, hasRoute, routeKey]);
 
-  return { prices, loading };
+  return {
+    prices: hasRoute ? prices : {},
+    loading: hasRoute ? loadedRouteKey !== routeKey : false,
+  };
 }
 
 // ── AirportPicker ─────────────────────────────────────────
@@ -178,6 +182,11 @@ function CalendarPicker({ label, value, onChange, minDate, icon, from, to }) {
     : (minD > todayObj ? minD : todayObj);
   const [viewYear,  setViewYear]  = useState(initDisplay.getFullYear());
   const [viewMonth, setViewMonth] = useState(initDisplay.getMonth());
+  const minMonthStart = new Date(minD.getFullYear(), minD.getMonth(), 1);
+  const currentMonthStart = new Date(viewYear, viewMonth, 1);
+  const effectiveMonthStart = currentMonthStart < minMonthStart ? minMonthStart : currentMonthStart;
+  const effectiveViewYear = effectiveMonthStart.getFullYear();
+  const effectiveViewMonth = effectiveMonthStart.getMonth();
 
   // Fetch real prices for this route
   const { prices: fetchedPrices, loading: pricesLoading } = useMonthPrices(from, to);
@@ -190,21 +199,12 @@ function CalendarPicker({ label, value, onChange, minDate, icon, from, to }) {
     return () => document.removeEventListener("mousedown", handle);
   }, []);
 
-  useEffect(() => {
-    if (!minDate) return;
-    const min = new Date(minDate + "T00:00:00");
-    if (new Date(viewYear, viewMonth, 1) < new Date(min.getFullYear(), min.getMonth(), 1)) {
-      setViewYear(min.getFullYear());
-      setViewMonth(min.getMonth());
-    }
-  }, [minDate]);
-
   function pad(n) { return String(n).padStart(2, "0"); }
   function toIso(y, m, d) { return `${y}-${pad(m + 1)}-${pad(d)}`; }
 
   const todayIso    = toIso(todayObj.getFullYear(), todayObj.getMonth(), todayObj.getDate());
-  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
-  const rawFirstDay = new Date(viewYear, viewMonth, 1).getDay();
+  const daysInMonth = new Date(effectiveViewYear, effectiveViewMonth + 1, 0).getDate();
+  const rawFirstDay = new Date(effectiveViewYear, effectiveViewMonth, 1).getDay();
   const firstDay    = rawFirstDay === 0 ? 6 : rawFirstDay - 1;
 
   const cells = [];
@@ -212,18 +212,28 @@ function CalendarPicker({ label, value, onChange, minDate, icon, from, to }) {
   for (let d = 1; d <= daysInMonth; d++) cells.push(d);
 
   function canGoPrev() {
-    return new Date(viewYear, viewMonth - 1, 1) >= new Date(todayObj.getFullYear(), todayObj.getMonth(), 1);
+    return new Date(effectiveViewYear, effectiveViewMonth - 1, 1) >= minMonthStart;
   }
   function prevMonth() {
-    if (viewMonth === 0) { setViewMonth(11); setViewYear(y => y - 1); }
-    else setViewMonth(m => m - 1);
+    if (effectiveViewMonth === 0) {
+      setViewMonth(11);
+      setViewYear(effectiveViewYear - 1);
+    } else {
+      setViewMonth(effectiveViewMonth - 1);
+      setViewYear(effectiveViewYear);
+    }
   }
   function nextMonth() {
-    if (viewMonth === 11) { setViewMonth(0); setViewYear(y => y + 1); }
-    else setViewMonth(m => m + 1);
+    if (effectiveViewMonth === 11) {
+      setViewMonth(0);
+      setViewYear(effectiveViewYear + 1);
+    } else {
+      setViewMonth(effectiveViewMonth + 1);
+      setViewYear(effectiveViewYear);
+    }
   }
   function selectDay(day) {
-    const iso = toIso(viewYear, viewMonth, day);
+    const iso = toIso(effectiveViewYear, effectiveViewMonth, day);
     if (new Date(iso + "T00:00:00") < minD) return;
     onChange(iso);
     setOpen(false);
@@ -237,7 +247,7 @@ function CalendarPicker({ label, value, onChange, minDate, icon, from, to }) {
 
   // Compute cheapest day in this month from fetched data
   const monthPrices = Object.entries(fetchedPrices)
-    .filter(([k, v]) => k.startsWith(`${viewYear}-${pad(viewMonth + 1)}`) && v !== null)
+    .filter(([k, v]) => k.startsWith(`${effectiveViewYear}-${pad(effectiveViewMonth + 1)}`) && v !== null)
     .map(([, v]) => v);
   const lowestFare = monthPrices.length ? Math.min(...monthPrices) : null;
   const hasPrices  = from && to; // only show price hints when route is set
@@ -259,8 +269,8 @@ function CalendarPicker({ label, value, onChange, minDate, icon, from, to }) {
           <div className="cal-header">
             <button type="button" className="cal-nav-btn" onClick={prevMonth} disabled={!canGoPrev()}>‹</button>
             <div className="cal-header-center">
-              <span className="cal-month-name">{MONTHS[viewMonth]}</span>
-              <span className="cal-year">{viewYear}</span>
+              <span className="cal-month-name">{MONTHS[effectiveViewMonth]}</span>
+              <span className="cal-year">{effectiveViewYear}</span>
               {hasPrices && lowestFare && !pricesLoading && (
                 <span className="cal-lowest-badge">From £{lowestFare}</span>
               )}
@@ -278,7 +288,7 @@ function CalendarPicker({ label, value, onChange, minDate, icon, from, to }) {
             {DAYS.map(d => <div key={d} className="cal-day-header">{d}</div>)}
             {cells.map((day, i) => {
               if (!day) return <div key={`e${i}`} />;
-              const iso        = toIso(viewYear, viewMonth, day);
+              const iso        = toIso(effectiveViewYear, effectiveViewMonth, day);
               const isDisabled = new Date(iso + "T00:00:00") < minD;
               const isSelected = iso === value;
               const isToday    = iso === todayIso;
@@ -351,7 +361,7 @@ function PassengerCounter({ label, subtitle, min, max, value, onChange }) {
 // ── SearchForm ────────────────────────────────────────────
 export function SearchForm({ onSearch, initialFrom = "" }) {
   const [tripType,      setTripType]      = useState("one-way");
-  const [from,          setFrom]          = useState("");
+  const [from,          setFrom]          = useState(initialFrom);
   const [to,            setTo]            = useState("");
   const [departureDate, setDepartureDate] = useState("");
   const [returnDate,    setReturnDate]    = useState("");
@@ -376,12 +386,6 @@ export function SearchForm({ onSearch, initialFrom = "" }) {
     loadAirports();
     return () => { cancelled = true; };
   }, []);
-
-  useEffect(() => {
-    if (!from && initialFrom) {
-      setFrom(initialFrom);
-    }
-  }, [from, initialFrom]);
 
   const _td = new Date(); const today = `${_td.getFullYear()}-${String(_td.getMonth()+1).padStart(2,"0")}-${String(_td.getDate()).padStart(2,"0")}`;
   const total = adults + children + infants;
