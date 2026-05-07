@@ -349,7 +349,7 @@ function PassengerCounter({ label, subtitle, min, max, value, onChange }) {
 }
 
 // ── SearchForm ────────────────────────────────────────────
-export function SearchForm({ onSearch, initialFrom = "LBA" }) {
+export function SearchForm({ onSearch, initialFrom = "" }) {
   const [tripType,      setTripType]      = useState("one-way");
   const [from,          setFrom]          = useState("");
   const [to,            setTo]            = useState("");

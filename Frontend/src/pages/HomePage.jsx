@@ -34,7 +34,7 @@ function buildInspirationBlurb(city, index) {
 export function HomePage({ onSearch, confirmedBooking, onDismissConfirmation }) {
   const [destinations, setDestinations] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [initialFrom, setInitialFrom] = useState("LBA");
+  const [initialFrom, setInitialFrom] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -43,9 +43,6 @@ export function HomePage({ onSearch, confirmedBooking, onDismissConfirmation }) 
       try {
         const homeData = await getHomeData();
         if (!cancelled) {
-          if (homeData?.nearestAirport?.iataCode) {
-            setInitialFrom(homeData.nearestAirport.iataCode);
-          }
           setDestinations(
             (homeData?.destinations || FALLBACK).map((destination) => ({
               ...destination,
