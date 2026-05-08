@@ -52,6 +52,10 @@ object AirportService {
 
     private var cachedAirports: List<AirportDTO>? = null
 
+    /**
+     * Loads the airport list used by the search form
+     * Includes direct and connecting route hints for the picker
+     */
     fun getAllAirports(): List<AirportDTO> {
         if (cachedAirports != null) return cachedAirports!!
 
@@ -158,6 +162,10 @@ object AirportService {
         return departures.toList()
     }
 
+    /**
+     * Returns reachable destinations for a chosen departure airport
+     * Keeps route lookups simple for search related features
+     */
     fun returnDestinations(from: String?): List<Destination> =
         transaction { // Return possible destination from specified airport
             val normalisedFrom = from?.trim()?.uppercase().takeUnless { it.isNullOrBlank() } // Normalise from String

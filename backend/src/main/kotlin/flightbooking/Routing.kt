@@ -19,6 +19,10 @@ import io.ktor.server.routing.put
 import io.ktor.server.routing.routing
 import kotlinx.serialization.SerializationException
 
+/**
+ * Registers the backend routes used by the frontend and tests
+ * Keeps the API surface in one place so request flow stays easy to follow
+ */
 fun Application.configureRouting() {
     routing {
         get("/") {

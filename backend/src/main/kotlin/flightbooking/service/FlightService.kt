@@ -50,6 +50,10 @@ data class FlightResponse(
 )
 
 object FlightService {
+    /**
+     * Searches for direct and connecting flights for the requested route
+     * Keeps the booking flow working from one search entry point
+     */
     fun searchFlights(
         from: String?,
         to: String?,
@@ -132,6 +136,10 @@ object FlightService {
                 .sortedWith(compareBy<FlightResponse> { it.departureDate }.thenBy { it.departureTime }.thenBy { it.flightNumber })
         }
 
+    /**
+     * Builds valid one stop options when no simple direct result is enough
+     * Applies layover and date rules before shaping the response
+     */
     private fun findConnectingFlights(
         departureAirportId: Int,
         arrivalAirportId: Int,

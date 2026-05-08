@@ -121,6 +121,10 @@ object AdminService {
         val createdAt: String,
     )
 
+    /**
+     * Checks the admin login details and returns a reusable admin token
+     * Keeps the admin entry point small and predictable
+     */
     fun login(requestBody: String): AdminLoginResponse {
         val request = json.decodeFromString<AdminLoginRequest>(requestBody)
         val expectedUsername = System.getenv("ADMIN_USERNAME") ?: "admin"
@@ -142,6 +146,10 @@ object AdminService {
         }
     }
 
+    /**
+     * Loads the admin booking list for the dashboard
+     * Reuses cached data so repeat admin requests stay lighter
+     */
     fun getBookings(authorizationHeader: String?): List<BookingService.Booking> {
         requireAdmin(authorizationHeader)
         return loadAdminBookings()
@@ -168,6 +176,10 @@ object AdminService {
         )
     }
 
+    /**
+     * Builds the admin report payload from the current booking data
+     * Groups the expensive summary work into one place
+     */
     fun getReports(authorizationHeader: String?): AdminReports {
         requireAdmin(authorizationHeader)
         val now = System.currentTimeMillis()
@@ -397,6 +409,10 @@ object AdminService {
             ?: throw IllegalStateException("Updated booking could not be loaded")
     }
 
+    /**
+     * Reuses the hydrated admin booking list for a short time
+     * Helps avoid repeating the same loading work across tabs
+     */
     private fun loadAdminBookings(): List<BookingService.Booking> {
         val now = System.currentTimeMillis()
         cachedAdminBookings?.takeIf { now - it.first < adminCacheTtlMs }?.let { return it.second }
