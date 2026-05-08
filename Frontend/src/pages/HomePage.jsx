@@ -120,8 +120,9 @@ export function HomePage({ onSearch, confirmedBooking, onDismissConfirmation }) 
 
         <div className="dest-grid">
           {destinations.map((destination, index) => (
-            <div
+            <button
               key={destination.code}
+              type="button"
               className={`dest-card ${loading ? "dest-card--loading" : ""}`}
               onClick={() => onSearch(buildSearchPayload(initialFrom, destination.code))}
               title={`Search flights to ${destination.city}`}
@@ -142,7 +143,7 @@ export function HomePage({ onSearch, confirmedBooking, onDismissConfirmation }) 
               ) : (
                 <span className="dest-meta">Available route</span>
               )}
-            </div>
+            </button>
           ))}
         </div>
 
