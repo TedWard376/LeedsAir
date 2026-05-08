@@ -104,7 +104,7 @@ Dedicated security testing notes and follow-up checklist live in [SECURITY_TESTI
 - Startup seeding runs when `seed.runOnStartup=true` or `RUN_CSV_SEED=true`
 - Flight schedule data is loaded from `FlightSchedule.csv`
 
-## Admin Access
+## Admin Access to see staff login
 
 The admin API uses a lightweight token-based login for now.
 
@@ -112,9 +112,9 @@ The admin API uses a lightweight token-based login for now.
 - Default password: `admin12345`
 - Override with `ADMIN_USERNAME` and `ADMIN_PASSWORD`
 
-## Backend Notes
+## Demo Account details
 
-- Auth currently uses lightweight bearer tokens and SHA-256 password hashing for this project
-- Loyalty and complaints support the existing frontend pages
-- Admin metrics and reports are derived from booking data already stored in the database
-- The next improvements would be deeper integration tests and stronger production-grade auth
+- Username: 'demo.customer@leedsair.local'
+- Password: 'demo12345'
+  
+
