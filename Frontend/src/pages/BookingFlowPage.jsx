@@ -421,7 +421,7 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
   const activeCardExpiry = useSavedCard && savedCard ? savedCard.expiryDisplay : cardExp;
 
   useEffect(() => {
-    if (step === 1 && flowStartRef.current) {
+    if ((step === 1 || step === 3) && flowStartRef.current) {
       flowStartRef.current.focus();
     }
   }, [step]);
@@ -748,6 +748,7 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
       <h1 className="visually-hidden">Complete your booking</h1>
       <div className="booking-flow-stepper-bar"><FlowStepper step={3} /></div>
       <div className="booking-flow-body"><div className="flow-step-body">
+        <div ref={flowStartRef} tabIndex="-1" />
         <h2 className="flow-step-title">Add Extras</h2>
         <p className="flow-subtitle">Enhance your journey. Extras apply to the whole booking.</p>
         <ExtrasInfoList />
@@ -755,7 +756,20 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
           {EXTRAS_LIST.map(extra => {
             const checked = extras.includes(extra.id);
             return (
-              <div key={extra.id} className={`extra-card ${checked?"extra-card--selected":""}`} onClick={()=>toggleExtra(extra.id)}>
+              <div
+                key={extra.id}
+                className={`extra-card ${checked?"extra-card--selected":""}`}
+                role="button"
+                tabIndex={0}
+                aria-pressed={checked}
+                onClick={() => toggleExtra(extra.id)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
+                    e.preventDefault();
+                    toggleExtra(extra.id);
+                  }
+                }}
+              >
                 <span className="extra-icon">{extra.icon}</span>
                 <div className="extra-info">
                   <span className="extra-label">{extra.label}</span>
