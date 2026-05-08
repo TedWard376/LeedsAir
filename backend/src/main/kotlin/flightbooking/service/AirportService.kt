@@ -15,6 +15,8 @@ data class AirportDTO(
     val name: String,
     val city: String?,
     val country: String?,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
     val directFrom: List<String> = emptyList(),
     val connectingFrom: List<String> = emptyList(),
     val tabIndex: Int = 0,
@@ -59,7 +61,11 @@ object AirportService {
     fun getAllAirports(): List<AirportDTO> {
         if (cachedAirports != null) return cachedAirports!!
 
-        val continentMap = AirportLoader.loadFromCsv().associate { airport -> airport.iata_code to airport.continent }
+        val airportMetadata =
+            AirportLoader.loadFromCsv().associateBy { airport ->
+                airport.iata_code.trim().uppercase()
+            }
+        val continentMap = airportMetadata.mapValues { (_, airport) -> airport.continent }
 
         return transaction {
             val allSchedules = FlightSchedulesTable.selectAll().toList()
@@ -124,11 +130,14 @@ object AirportService {
                     .filter { it[AirportsTable.id] in activeAirportIds }
                     .map {
                         val code = it[AirportsTable.code]
+                        val airportMetadataEntry = airportMetadata[code.trim().uppercase()]
                         AirportDTO(
                             code = code,
                             name = it[AirportsTable.name] ?: "",
                             city = it[AirportsTable.city],
                             country = it[AirportsTable.country],
+                            latitude = airportMetadataEntry?.latitude_deg,
+                            longitude = airportMetadataEntry?.longitude_deg,
                             directFrom = directMap[code]?.toList() ?: emptyList(),
                             connectingFrom = connectingMap[code]?.toList() ?: emptyList(),
                             tabIndex = 0,

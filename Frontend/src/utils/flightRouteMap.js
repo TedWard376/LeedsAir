@@ -1,10 +1,39 @@
 import { airportCoordinates } from "../data/airportCoordinates";
+import { getAirports } from "../services/api";
 
 export async function loadAirportLookup() {
-  return airportCoordinates.reduce((lookup, airport) => {
+  const staticLookup = airportCoordinates.reduce((lookup, airport) => {
     lookup[airport.iata] = airport;
     return lookup;
   }, {});
+
+  try {
+    const apiAirports = await getAirports();
+    if (!Array.isArray(apiAirports)) return staticLookup;
+
+    return apiAirports.reduce((lookup, airport) => {
+      const code = String(airport.code || airport.iata || "").trim().toUpperCase();
+      const latitude = Number(airport.latitude);
+      const longitude = Number(airport.longitude);
+
+      if (!code || !Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+        return lookup;
+      }
+
+      lookup[code] = {
+        ...lookup[code],
+        ...airport,
+        iata: code,
+        latitude,
+        longitude,
+        city: airport.city || lookup[code]?.city || "",
+        name: airport.name || lookup[code]?.name || "",
+      };
+      return lookup;
+    }, { ...staticLookup });
+  } catch {
+    return staticLookup;
+  }
 }
 
 export function getRouteCodes(legs) {
