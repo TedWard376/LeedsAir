@@ -116,12 +116,17 @@ function AirportPicker({ label, value, onChange, exclude, airports = [] }) {
            aria-haspopup="listbox"
            tabIndex={selected && !open ? 0 : undefined}>
         {selected && !open ? (
-          <div className="airport-selected">
-            <div className="airport-selected-text">
-              <span className="airport-selected-name">{selected.name} ({selected.code})</span>
-              <span className="airport-selected-city">{selected.city || "Unknown City"}</span>
+          <>
+            <div className="airport-selected">
+              <div className="airport-selected-text">
+                <span className="airport-selected-name">{selected.name} ({selected.code})</span>
+                <span className="airport-selected-city">{selected.city || "Unknown City"}</span>
+              </div>
             </div>
-          </div>
+            <input id={airportInputId} ref={inputRef} className="airport-text-input" placeholder="City or airport code..."
+              value={query} onChange={e => { setQuery(e.target.value); setOpen(true); }}
+              onFocus={() => setOpen(true)} autoComplete="off" style={{ display: "none" }} />
+          </>
         ) : (
           <input id={airportInputId} ref={inputRef} className="airport-text-input" placeholder="City or airport code..."
             value={query} onChange={e => { setQuery(e.target.value); setOpen(true); }}
@@ -452,7 +457,17 @@ export function SearchForm({ onSearch, initialFrom = "" }) {
     <form className="search-form" onSubmit={handleSubmit}>
       <div className="trip-type-row">
         {[["one-way","✈ One Way"],["round-trip","↔ Round Trip"]].map(([val,lbl]) => (
-          <label key={val} className={"trip-pill" + (tripType === val ? " active" : "")}>
+          <label key={val} className={"trip-pill" + (tripType === val ? " active" : "")} 
+            tabIndex={0}
+            role="button"
+            aria-pressed={tripType === val}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                setTripType(val);
+              }
+            }}
+          >
             <input type="radio" value={val} checked={tripType === val}
               onChange={() => setTripType(val)} style={{ display:"none" }} />
             {lbl}

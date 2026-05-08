@@ -1,6 +1,6 @@
 export function LoadingSpinner({ message = "Loading..." }) {
   return (
-    <div className="loading-container">
+    <div className="loading-container" role="status" aria-live="polite" aria-atomic="true">
       <div className="spinner" />
       <p className="loading-text">{message}</p>
     </div>
@@ -9,7 +9,7 @@ export function LoadingSpinner({ message = "Loading..." }) {
 
 export function ErrorMessage({ message, onRetry }) {
   return (
-    <div className="error-container">
+    <div className="error-container" role="alert" aria-live="assertive" aria-atomic="true">
       <span className="error-icon">⚠</span>
       <p className="error-text">{message}</p>
       {onRetry && (
