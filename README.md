@@ -2,6 +2,10 @@
 
 LeedsAir is a full-stack flight booking project with a React + Vite frontend and a Kotlin + Ktor backend.
 
+## Acknowledgement
+
+Claude Haiku 4.5 was used to help support the creation of frontend files and testing during development.
+
 ## Project Structure
 
 ```text

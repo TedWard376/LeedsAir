@@ -9,6 +9,10 @@ const FALLBACK = [
   { code: "CDG", city: "Paris", flag: "", price: 74 },
 ];
 
+/**
+ * Builds a lightweight search payload from quick action buttons
+ * Keeps destination cards and chips using the same booking flow
+ */
 function buildSearchPayload(from, to, travelClass = "economy") {
   return {
     tripType: "one-way",
@@ -22,6 +26,10 @@ function buildSearchPayload(from, to, travelClass = "economy") {
   };
 }
 
+/**
+ * Builds the short travel ideas shown on the landing page
+ * Gives the home screen a bit more guidance without extra API work
+ */
 function buildInspirationBlurb(city, index) {
   const blurbs = [
     `A strong short-haul option if you want an easy getaway to ${city}.`,
@@ -31,6 +39,10 @@ function buildInspirationBlurb(city, index) {
   return blurbs[index] || `Start with ${city} if you want an easy place to begin searching.`;
 }
 
+/**
+ * Renders the landing page search experience and destination ideas
+ * Pulls together home recommendations quick actions and booking confirmation
+ */
 export function HomePage({ onSearch, confirmedBooking, onDismissConfirmation }) {
   const [destinations, setDestinations] = useState([]);
   const [loading, setLoading] = useState(true);

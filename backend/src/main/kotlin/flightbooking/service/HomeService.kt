@@ -23,6 +23,10 @@ object HomeService {
     @Volatile
     private var cachedDestinationsAt: Long = 0L
 
+    /**
+     * Builds the destination cards shown on the home page
+     * Caches the result so the landing page feels quicker on repeat loads
+     */
     fun getDestinations(): List<DestinationDisplay> {
         val now = System.currentTimeMillis()
         cachedDestinations?.takeIf { now - cachedDestinationsAt < destinationCacheTtlMs }?.let { return it }
@@ -129,6 +133,10 @@ object HomeService {
             Offer("Amsterdam Canals", "From $95", 95.0, "USD", "AMS", "https://images.unsplash.com/photo-1512470876302-972faa2aa9a4?w=400", "Amsterdam canal view", "Each way", ariaLabel = "Special offer: Amsterdam Canals, Each way flight from 95 USD to AMS"),
         )
 
+    /**
+     * Builds the home page payload used by the frontend landing view
+     * Pulls together nearby airport data offers and destination ideas
+     */
     suspend fun getHomeData(userIp: String?): HomeResponse {
         val loadedAirports = AirportLoader.loadFromCsv()
         val nearestAirport =

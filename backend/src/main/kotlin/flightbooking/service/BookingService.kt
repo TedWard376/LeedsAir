@@ -158,6 +158,10 @@ object BookingService {
         val modificationsByBookingId: Map<Int, List<ResultRow>>,
     )
 
+    /**
+     * Loads bookings for a single customer account
+     * Uses shared hydration so booking pages stay consistent
+     */
     fun getAllBookings(userId: Int): List<Booking> =
         transaction {
             val bookingRows =
@@ -168,6 +172,10 @@ object BookingService {
             hydrateBookings(bookingRows)
         }
 
+    /**
+     * Loads the full booking list for admin use
+     * Keeps the admin dashboard backed by one booking shape
+     */
     fun getAllBookingsForAdmin(): List<Booking> =
         transaction {
             val bookingRows =
@@ -198,6 +206,10 @@ object BookingService {
             if (!matchesLastName) null else booking
         }
 
+    /**
+     * Creates a booking and stores the linked passenger and payment data
+     * Centralises the main booking flow in one service entry point
+     */
     fun newBooking(str: String): Booking =
         transaction {
             val request = json.decodeFromString<BookingCreateRequest>(str)
@@ -600,6 +612,10 @@ object BookingService {
         return hydrateBooking(row)
     }
 
+    /**
+     * Hydrates a batch of booking rows with passenger flight and request data
+     * Reduces repeated database lookups when many bookings are loaded together
+     */
     private fun hydrateBookings(bookingRows: List<ResultRow>): List<Booking> {
         if (bookingRows.isEmpty()) return emptyList()
         val context = buildHydrationContext(bookingRows)

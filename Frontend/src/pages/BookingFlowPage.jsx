@@ -11,6 +11,10 @@ const INSURANCE_PDF = "/LeedsAir-Travel-Insurance-Policy.pdf";
 
 const FLOW_STEPS = ["Flight summary", "Passenger details", "Seats", "Extras", "Review & Pay"];
 
+/**
+ * Detects the likely card brand from the visible card number
+ * Keeps the payment step giving quick feedback while typing
+ */
 function detectCardBrand(cardNumber) {
   const digits = cardNumber.replace(/\D/g, "");
   if (digits.startsWith("4")) return "Visa";
@@ -299,6 +303,10 @@ function AuthPanel({ onAuthComplete }) {
   );
 }
 
+/**
+ * Builds the passenger list from the selected flight search details
+ * Prefills the lead traveller when account information is available
+ */
 function buildPassengers(flight, user) {
   const adults   = Math.max(1, Number(flight?.searchParams?.adults)   || 1);
   const children =              Number(flight?.searchParams?.children) || 0;
@@ -361,6 +369,10 @@ function getAgeError(dateOfBirth, isLeadPassenger) {
   return null;
 }
 
+/**
+ * Renders the full booking flow from passenger details to payment
+ * Keeps the checkout journey in one place so each step can share state
+ */
 export function BookingFlowPage({ flight, onNavigate, onComplete }) {
   const { user } = useAuth();
   const [step, setStep] = useState(0);
