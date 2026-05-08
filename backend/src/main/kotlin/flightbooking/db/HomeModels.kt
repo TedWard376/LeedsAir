@@ -12,6 +12,8 @@ data class Airport(
     val municipality: String,
     val icaoCode: String,
     val iataCode: String,
+    val tabIndex: Int = 0,
+    val ariaLabel: String = "",
 )
 
 @Serializable
@@ -20,6 +22,9 @@ data class DestinationDisplay(
     val code: String,
     val price: Double,
     val flag: String,
+    val bookingCount: Int? = null,
+    val tabIndex: Int = 0,
+    val ariaLabel: String = "",
 )
 
 @Serializable
@@ -32,6 +37,8 @@ data class Offer(
     val imageUrl: String,
     val altText: String,
     val tripType: String = "Return",
+    val tabIndex: Int = 0,
+    val ariaLabel: String = "",
 )
 
 @Serializable
@@ -43,6 +50,8 @@ data class HeroSlide(
     val altText: String,
     val ctaText: String,
     val ctaUrl: String,
+    val tabIndex: Int = 0,
+    val ariaLabel: String = "",
 )
 
 @Serializable

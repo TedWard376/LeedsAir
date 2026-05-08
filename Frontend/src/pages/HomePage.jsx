@@ -1,44 +1,22 @@
 import { useState, useEffect, useMemo } from "react";
 import { SearchForm } from "../components/SearchForm";
-import { adminGetReports, getFlights } from "../services/api";
+import { getHomeData } from "../services/api";
 
-const AIRPORTS = {
-  LBA: { city: "Leeds", flag: "GB" },
-  LHR: { city: "London", flag: "GB" },
-  LGW: { city: "London", flag: "GB" },
-  MAN: { city: "Manchester", flag: "GB" },
-  EDI: { city: "Edinburgh", flag: "GB" },
-  BHX: { city: "Birmingham", flag: "GB" },
-  BRS: { city: "Bristol", flag: "GB" },
-  NCL: { city: "Newcastle", flag: "GB" },
-  AMS: { city: "Amsterdam", flag: "NL" },
-  CDG: { city: "Paris", flag: "FR" },
-  BCN: { city: "Barcelona", flag: "ES" },
-  MAD: { city: "Madrid", flag: "ES" },
-  FCO: { city: "Rome", flag: "IT" },
-  MXP: { city: "Milan", flag: "IT" },
-  FRA: { city: "Frankfurt", flag: "DE" },
-  MUC: { city: "Munich", flag: "DE" },
-  DXB: { city: "Dubai", flag: "AE" },
-  JFK: { city: "New York", flag: "US" },
-  LAX: { city: "Los Angeles", flag: "US" },
-  DUB: { city: "Dublin", flag: "IE" },
-  CPH: { city: "Copenhagen", flag: "DK" },
-  LIS: { city: "Lisbon", flag: "PT" },
-  ATH: { city: "Athens", flag: "GR" },
-};
+const FALLBACK = [
+  { code: "BCN", city: "Barcelona", flag: "", price: 89 },
+  { code: "AMS", city: "Amsterdam", flag: "", price: 65 },
+  { code: "DXB", city: "Dubai", flag: "", price: 299 },
+  { code: "CDG", city: "Paris", flag: "", price: 74 },
+];
 
-const DEFAULT_CODES = ["AMS", "BCN", "CDG", "DUB", "MAD", "FCO"];
-
-function destCode(routeStr) {
-  const parts = routeStr.split(/→|->/).map((value) => value.trim());
-  return parts[1] || null;
-}
-
-function buildSearchPayload(to, travelClass = "economy") {
+/**
+ * Builds a lightweight search payload from quick action buttons
+ * Keeps destination cards and chips using the same booking flow
+ */
+function buildSearchPayload(from, to, travelClass = "economy") {
   return {
     tripType: "one-way",
-    from: "LBA",
+    from,
     to,
     departureDate: "",
     travelClass,
@@ -48,6 +26,10 @@ function buildSearchPayload(to, travelClass = "economy") {
   };
 }
 
+/**
+ * Builds the short travel ideas shown on the landing page
+ * Gives the home screen a bit more guidance without extra API work
+ */
 function buildInspirationBlurb(city, index) {
   const blurbs = [
     `A strong short-haul option if you want an easy getaway to ${city}.`,
@@ -57,98 +39,74 @@ function buildInspirationBlurb(city, index) {
   return blurbs[index] || `Start with ${city} if you want an easy place to begin searching.`;
 }
 
-async function getDestinationCard(code, bookingCount = null) {
-  if (!code || !AIRPORTS[code]) return null;
-
-  try {
-    const flights = await getFlights({ from: "LBA", to: code });
-    if (!flights?.length) return null;
-
-    const prices = flights.map((flight) => flight.price).filter((price) => typeof price === "number");
-    return {
-      code,
-      city: AIRPORTS[code].city,
-      flag: AIRPORTS[code].flag,
-      price: prices.length ? Math.min(...prices) : null,
-      bookingCount,
-    };
-  } catch {
-    return null;
-  }
-}
-
+/**
+ * Renders the landing page search experience and destination ideas
+ * Pulls together home recommendations quick actions and booking confirmation
+ */
 export function HomePage({ onSearch, confirmedBooking, onDismissConfirmation }) {
   const [destinations, setDestinations] = useState([]);
   const [loading, setLoading] = useState(true);
+  const initialFrom = "LBA";
 
   useEffect(() => {
     let cancelled = false;
 
-    async function loadPopular() {
-      setLoading(true);
-
+    async function loadDestinations() {
       try {
-        const reports = await adminGetReports();
-        const seenDestinations = new Set();
-        const popularCodes = (reports.popularRoutes || [])
-          .map(({ route, count }) => ({ code: destCode(route), count }))
-          .filter(({ code }) => {
-            if (!code || seenDestinations.has(code)) return false;
-            seenDestinations.add(code);
-            return Boolean(AIRPORTS[code]);
-          })
-          .slice(0, 6);
-
-        let cards = (await Promise.all(
-          popularCodes.map(({ code, count }) => getDestinationCard(code, count))
-        )).filter(Boolean);
-
-        if (!cards.length) {
-          cards = (await Promise.all(DEFAULT_CODES.map((code) => getDestinationCard(code)))).filter(Boolean);
-        }
-
+        const homeData = await getHomeData();
         if (!cancelled) {
-          setDestinations(cards.slice(0, 4));
+          setDestinations(
+            (homeData?.destinations || FALLBACK).map((destination) => ({
+              ...destination,
+              flag: "",
+            })),
+          );
           setLoading(false);
         }
       } catch {
-        const fallbackCards = (await Promise.all(DEFAULT_CODES.map((code) => getDestinationCard(code)))).filter(Boolean);
         if (!cancelled) {
-          setDestinations(fallbackCards.slice(0, 4));
+          setDestinations(FALLBACK);
           setLoading(false);
         }
       }
     }
 
-    loadPopular();
-    return () => { cancelled = true; };
+    loadDestinations();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  const bestValueDestination = useMemo(() => {
-    return [...destinations]
-      .filter((destination) => typeof destination.price === "number")
-      .sort((a, b) => a.price - b.price)[0] || null;
-  }, [destinations]);
+  const bestValueDestination = useMemo(
+    () =>
+      [...destinations]
+        .filter((destination) => typeof destination.price === "number")
+        .sort((a, b) => a.price - b.price)[0] || null,
+    [destinations],
+  );
 
-  const discoveryCodes = useMemo(() => {
-    return destinations.slice(0, 4).map((destination) => destination.code);
-  }, [destinations]);
+  const discoveryCodes = useMemo(
+    () => destinations.slice(0, 4).map((destination) => destination.code),
+    [destinations],
+  );
 
-  const inspirationCards = useMemo(() => {
-    return destinations.slice(0, 3).map((destination, index) => ({
-      title: index === 0 ? "Popular right now" : index === 1 ? "Good for a city break" : "Worth exploring",
-      route: `LBA to ${destination.city}`,
-      blurb: buildInspirationBlurb(destination.city, index),
-      to: destination.code,
-    }));
-  }, [destinations]);
+  const inspirationCards = useMemo(
+    () =>
+      destinations.slice(0, 3).map((destination, index) => ({
+        title: index === 0 ? "Popular right now" : index === 1 ? "Good for a city break" : "Worth exploring",
+        route: `${initialFrom} to ${destination.city}`,
+        blurb: buildInspirationBlurb(destination.city, index),
+        to: destination.code,
+      })),
+    [destinations, initialFrom],
+  );
 
   return (
     <div className="page home-page">
       <div className="hero">
         <h1 className="hero-title">Where will you fly next?</h1>
         <p className="hero-subtitle">Search hundreds of routes. Book in minutes.</p>
-        <SearchForm onSearch={onSearch} />
+        <SearchForm onSearch={onSearch} initialFrom={initialFrom} />
       </div>
 
       <div className="home-destinations">
@@ -165,7 +123,7 @@ export function HomePage({ onSearch, confirmedBooking, onDismissConfirmation }) 
             <div
               key={destination.code}
               className={`dest-card ${loading ? "dest-card--loading" : ""}`}
-              onClick={() => onSearch(buildSearchPayload(destination.code))}
+              onClick={() => onSearch(buildSearchPayload(initialFrom, destination.code))}
               title={`Search flights to ${destination.city}`}
             >
               <span className="dest-rank">#{index + 1}</span>
@@ -177,7 +135,9 @@ export function HomePage({ onSearch, confirmedBooking, onDismissConfirmation }) 
               <span className="dest-price">
                 {destination.price ? `from £${destination.price}` : "View flights"}
               </span>
-              {destination.bookingCount ? (
+              {destination.reasonLabel ? (
+                <span className="dest-meta">{destination.reasonLabel}</span>
+              ) : destination.bookingCount ? (
                 <span className="dest-meta">{destination.bookingCount} recent bookings</span>
               ) : (
                 <span className="dest-meta">Available route</span>
@@ -202,7 +162,7 @@ export function HomePage({ onSearch, confirmedBooking, onDismissConfirmation }) 
           </p>
           <button
             className="quick-action-btn"
-            onClick={() => bestValueDestination && onSearch(buildSearchPayload(bestValueDestination.code))}
+            onClick={() => bestValueDestination && onSearch(buildSearchPayload(initialFrom, bestValueDestination.code))}
             disabled={!bestValueDestination}
           >
             Explore best value
@@ -215,7 +175,7 @@ export function HomePage({ onSearch, confirmedBooking, onDismissConfirmation }) 
           <p>Use the destination ideas below to jump straight into a search without filling every field first.</p>
           <div className="discovery-chip-row">
             {discoveryCodes.map((code) => (
-              <button key={code} className="discovery-chip" onClick={() => onSearch(buildSearchPayload(code))}>
+              <button key={code} className="discovery-chip" onClick={() => onSearch(buildSearchPayload(initialFrom, code))}>
                 {code}
               </button>
             ))}
@@ -236,7 +196,7 @@ export function HomePage({ onSearch, confirmedBooking, onDismissConfirmation }) 
               <span className="booking-card-eyebrow">{card.route}</span>
               <h3>{card.title}</h3>
               <p>{card.blurb}</p>
-              <button className="quick-action-btn" onClick={() => onSearch(buildSearchPayload(card.to))}>
+              <button className="quick-action-btn" onClick={() => onSearch(buildSearchPayload(initialFrom, card.to))}>
                 Search this route
               </button>
             </div>

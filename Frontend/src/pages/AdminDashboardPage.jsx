@@ -2,14 +2,18 @@ import { useState, useEffect, useMemo } from "react";
 import {
   adminGetBookings,
   adminGetComplaints,
-  adminGetMetrics,
   adminGetReports,
   adminResolveModificationRequest,
 } from "../services/api";
 import { LoadingSpinner, ErrorMessage } from "../components/StatusMessages";
 
 const STATUS_FILTERS = ["All", "Confirmed", "Cancelled", "Pending", "CheckedIn"];
+const BOOKINGS_PER_PAGE = 20;
 
+/**
+ * Builds a simple csv export from the current booking rows
+ * Lets admins take a quick snapshot of the visible data
+ */
 function exportCSV(rows, filename) {
   if (!rows.length) return;
   const headers = ["Reference", "Passenger", "Route", "Date", "Class", "Status", "Cancellation Reason", "Price"];
@@ -56,6 +60,10 @@ function BarChart({ data, labelKey, valueKey, prefix = "", color = "var(--sky)" 
   );
 }
 
+/**
+ * Renders the small summary cards used across the admin dashboard
+ * Keeps metric displays looking consistent between tabs
+ */
 function MetricCard({ value, label, icon, highlight }) {
   return (
     <div className={`metric-card ${highlight ? "metric-card--highlight" : ""}`}>
@@ -71,6 +79,36 @@ function formatRequestType(type) {
   return type.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+/**
+ * Builds the top level booking metrics used on the admin page
+ * Reuses the loaded booking data instead of asking the backend twice
+ */
+function buildMetricsFromBookings(bookings) {
+  const cancellations = bookings.filter((booking) => booking.status === "Cancelled").length;
+  const totalRevenue = bookings
+    .filter((booking) => booking.status !== "Cancelled")
+    .reduce((sum, booking) => sum + (booking.totalPrice || 0), 0);
+  const routeCounts = bookings.reduce((counts, booking) => {
+    const route = `${booking.flight?.from || booking.from || "-"} -> ${booking.flight?.to || booking.to || "-"}`;
+    counts.set(route, (counts.get(route) || 0) + 1);
+    return counts;
+  }, new Map());
+  const popularRoute = Array.from(routeCounts.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] || "-";
+
+  return {
+    totalBookings: bookings.length,
+    cancellations,
+    totalRevenue,
+    popularRoute,
+    activeUsers: new Set(bookings.map((booking) => booking.userId)).size,
+    cancellationRate: bookings.length ? ((cancellations / bookings.length) * 100).toFixed(2) : "0.00",
+  };
+}
+
+/**
+ * Renders the admin dashboard for bookings reports and support work
+ * Keeps the main admin flows together in one page component
+ */
 export function AdminDashboardPage({ onNavigate }) {
   const [tab, setTab] = useState("bookings");
   const [bookings, setBookings] = useState([]);
@@ -88,15 +126,15 @@ export function AdminDashboardPage({ onNavigate }) {
   const [dateFilter, setDateFilter] = useState("");
   const [routeFilter, setRouteFilter] = useState("");
   const [expandedId, setExpandedId] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
 
   async function refreshDashboardData(includeReports = false) {
-    const [bookingsData, metricsData, reportsData] = await Promise.all([
+    const [bookingsData, reportsData] = await Promise.all([
       adminGetBookings(),
-      adminGetMetrics(),
       includeReports ? adminGetReports() : Promise.resolve(null),
     ]);
     setBookings(bookingsData);
-    setMetrics(metricsData);
+    setMetrics(buildMetricsFromBookings(bookingsData));
     if (includeReports && reportsData) {
       setReports(reportsData);
     }
@@ -113,13 +151,10 @@ export function AdminDashboardPage({ onNavigate }) {
       setLoading(true);
       setError(null);
       try {
-        const [bookingsData, metricsData] = await Promise.all([
-          adminGetBookings(),
-          adminGetMetrics(),
-        ]);
+        const bookingsData = await adminGetBookings();
         if (!cancelled) {
           setBookings(bookingsData);
-          setMetrics(metricsData);
+          setMetrics(buildMetricsFromBookings(bookingsData));
         }
       } catch (err) {
         if (!cancelled) setError(err.message);
@@ -209,6 +244,23 @@ export function AdminDashboardPage({ onNavigate }) {
       .map((request) => ({ booking, request }))
   ), [bookings]);
 
+  useEffect(() => {
+    setCurrentPage(1);
+    setExpandedId(null);
+  }, [statusFilter, search, dateFilter, routeFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / BOOKINGS_PER_PAGE));
+  const paginatedFiltered = useMemo(() => {
+    const start = (currentPage - 1) * BOOKINGS_PER_PAGE;
+    return filtered.slice(start, start + BOOKINGS_PER_PAGE);
+  }, [currentPage, filtered]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
   const uniqueRoutes = useMemo(() => {
     const routeSet = new Set();
     bookings.forEach((booking) => {
@@ -220,6 +272,7 @@ export function AdminDashboardPage({ onNavigate }) {
 
   return (
     <div className="page admin-page">
+      <h1 className="visually-hidden">Admin Dashboard</h1>
       <div className="admin-topbar">
         <div className="admin-brand">
           <span>Admin</span>
@@ -273,20 +326,26 @@ export function AdminDashboardPage({ onNavigate }) {
             )}
 
             <div className="admin-filters-bar">
+              <label className="visually-hidden" htmlFor="admin-booking-search">Search bookings</label>
               <input
+                id="admin-booking-search"
                 className="admin-search"
                 placeholder="Search reference, passenger, flight no..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
+              <label className="visually-hidden" htmlFor="admin-date-filter">Filter by departure date</label>
               <input
+                id="admin-date-filter"
                 type="date"
                 className="admin-date-filter"
                 value={dateFilter}
                 onChange={(e) => setDateFilter(e.target.value)}
                 title="Filter by departure date"
               />
+              <label className="visually-hidden" htmlFor="admin-route-filter">Filter by route</label>
               <select
+                id="admin-route-filter"
                 className="admin-route-filter"
                 value={routeFilter}
                 onChange={(e) => setRouteFilter(e.target.value)}
@@ -322,7 +381,8 @@ export function AdminDashboardPage({ onNavigate }) {
 
             <div className="admin-results-bar">
               <span className="admin-results-count">
-                Showing <strong>{filtered.length}</strong> of <strong>{bookings.length}</strong> bookings
+                Showing <strong>{paginatedFiltered.length}</strong> of <strong>{filtered.length}</strong> filtered bookings
+                {" "}from <strong>{bookings.length}</strong> total
               </span>
               <button
                 className="export-btn"
@@ -331,6 +391,30 @@ export function AdminDashboardPage({ onNavigate }) {
                 Export CSV
               </button>
             </div>
+
+            {filtered.length > BOOKINGS_PER_PAGE && (
+              <div className="admin-results-bar" style={{ marginTop: "-0.75rem" }}>
+                <span className="admin-results-count">
+                  Page <strong>{currentPage}</strong> of <strong>{totalPages}</strong>
+                </span>
+                <div style={{ display: "flex", gap: "0.75rem" }}>
+                  <button
+                    className="admin-clear-btn"
+                    onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                    disabled={currentPage === 1}
+                  >
+                    Previous
+                  </button>
+                  <button
+                    className="admin-clear-btn"
+                    onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                    disabled={currentPage === totalPages}
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
 
             <div className="admin-table-wrapper">
               <div className="admin-table-header">
@@ -347,7 +431,7 @@ export function AdminDashboardPage({ onNavigate }) {
                 <div className="empty-state"><p>No bookings match your filters.</p></div>
               )}
 
-              {filtered.map((booking) => (
+              {paginatedFiltered.map((booking) => (
                 <div key={booking.id || booking.bookingReference}>
                   <div
                     className="admin-table-row admin-table-row--clickable"
@@ -476,7 +560,7 @@ export function AdminDashboardPage({ onNavigate }) {
         {!loading && !error && tab === "modifications" && (
           <div className="modifications-section">
             <div style={{ marginBottom: "2rem" }}>
-              <h3 style={{ marginBottom: "1rem" }}>Change Tracking Summary</h3>
+              <h2 style={{ marginBottom: "1rem" }}>Change Tracking Summary</h2>
               <div className="admin-metrics">
                 <MetricCard icon="Changes" value={modifications.length} label="Pending Changes" />
                 <MetricCard icon="Cancel" value={bookings.filter((booking) => booking.status === "Cancelled").length} label="Cancellations" />
@@ -485,7 +569,7 @@ export function AdminDashboardPage({ onNavigate }) {
               </div>
             </div>
 
-            <h2>Modification Requests</h2>
+            <h3>Modification Requests</h3>
             <p className="section-subtitle">
               Bookings with pending change requests or awaiting admin approval.
             </p>
@@ -534,7 +618,9 @@ export function AdminDashboardPage({ onNavigate }) {
                       <p className="admin-modification-description">
                         {request.description || "No customer note was provided for this request."}
                       </p>
+                      <label htmlFor={`admin-note-${request.id}`} className="form-group label">Admin note</label>
                       <textarea
+                        id={`admin-note-${request.id}`}
                         className="admin-note-input"
                         rows={3}
                         placeholder="Optional admin note for this decision"
@@ -547,6 +633,57 @@ export function AdminDashboardPage({ onNavigate }) {
                         }
                       />
                     </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {!loading && !error && tab === "complaints" && (
+          <div className="modifications-section">
+            <h2>Customer Complaints</h2>
+            <p className="section-subtitle">
+              Review submitted complaints from customers and follow up by booking reference.
+            </p>
+
+            {!complaints && <LoadingSpinner message="Loading complaints..." />}
+
+            {complaints && complaints.length === 0 && (
+              <div className="empty-state">
+                <span className="empty-icon">✓</span>
+                <p>No complaints submitted yet.</p>
+              </div>
+            )}
+
+            {complaints && complaints.length > 0 && (
+              <div className="admin-table-wrapper">
+                <div className="admin-table-header" style={{ gridTemplateColumns: "0.7fr 1fr 1fr 0.8fr 0.9fr 1.8fr" }}>
+                  <span>ID</span>
+                  <span>Customer</span>
+                  <span>Booking</span>
+                  <span>Status</span>
+                  <span>Submitted</span>
+                  <span>Complaint</span>
+                </div>
+                {complaints.map((complaint) => (
+                  <div className="admin-table-row" style={{ gridTemplateColumns: "0.7fr 1fr 1fr 0.8fr 0.9fr 1.8fr" }} key={complaint.id}>
+                    <span className="ref-value">CMP{String(complaint.id).padStart(6, "0")}</span>
+                    <span>
+                      <strong>{complaint.customerName || "Guest customer"}</strong>
+                      <br />
+                      <small>{complaint.customerEmail || "-"}</small>
+                    </span>
+                    <span>{complaint.bookingReference || "Not provided"}</span>
+                    <span className={`status-badge status-${String(complaint.status || "open").toLowerCase()}`}>
+                      {complaint.status || "Open"}
+                    </span>
+                    <span>{complaint.createdAt ? new Date(complaint.createdAt).toLocaleString("en-GB") : "-"}</span>
+                    <span>
+                      <strong>{complaint.subject || "General complaint"}</strong>
+                      <br />
+                      <small>{complaint.message || "No details provided."}</small>
+                    </span>
                   </div>
                 ))}
               </div>

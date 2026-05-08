@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "../context/AuthContext";
 import { createBooking, login, register } from "../services/api";
 import { RouteMap } from "../components/RouteMap";
@@ -11,6 +11,10 @@ const INSURANCE_PDF = "/LeedsAir-Travel-Insurance-Policy.pdf";
 
 const FLOW_STEPS = ["Flight summary", "Passenger details", "Seats", "Extras", "Review & Pay"];
 
+/**
+ * Detects the likely card brand from the visible card number
+ * Keeps the payment step giving quick feedback while typing
+ */
 function detectCardBrand(cardNumber) {
   const digits = cardNumber.replace(/\D/g, "");
   if (digits.startsWith("4")) return "Visa";
@@ -260,7 +264,7 @@ function AuthPanel({ onAuthComplete }) {
       <div className="auth-panel-header">
         <span className="auth-panel-icon">🎁</span>
         <div>
-          <h3>Save booking &amp; earn rewards</h3>
+          <h2>Save booking &amp; earn rewards</h2>
           <p>Log in or create a free account to earn loyalty points on this booking.</p>
         </div>
       </div>
@@ -272,25 +276,25 @@ function AuthPanel({ onAuthComplete }) {
       {error && <div className="form-error" style={{margin:"0 0 .75rem"}}>⚠ {error}</div>}
       {mode === "login" ? (
         <form onSubmit={handleLogin} className="auth-mini-form">
-          <div className="form-group"><label>Email</label>
-            <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="your@email.com" required /></div>
-          <div className="form-group"><label>Password</label>
-            <input type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="••••••••" required /></div>
+          <div className="form-group"><label htmlFor="auth-login-email">Email</label>
+            <input id="auth-login-email" type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="your@email.com" required /></div>
+          <div className="form-group"><label htmlFor="auth-login-password">Password</label>
+            <input id="auth-login-password" type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="••••••••" required /></div>
           <button className="flow-next-btn" style={{width:"100%",marginTop:".5rem"}} disabled={loading}>
             {loading?"Logging in…":"Log in & continue"}</button>
         </form>
       ) : (
         <form onSubmit={handleRegister} className="auth-mini-form">
           <div className="form-row">
-            <div className="form-group"><label>First name</label>
-              <input value={firstName} onChange={e=>setFirstName(e.target.value)} required placeholder="Jane" /></div>
-            <div className="form-group"><label>Last name</label>
-              <input value={lastName} onChange={e=>setLastName(e.target.value)} required placeholder="Smith" /></div>
+            <div className="form-group"><label htmlFor="auth-register-first-name">First name</label>
+              <input id="auth-register-first-name" value={firstName} onChange={e=>setFirstName(e.target.value)} required placeholder="Jane" /></div>
+            <div className="form-group"><label htmlFor="auth-register-last-name">Last name</label>
+              <input id="auth-register-last-name" value={lastName} onChange={e=>setLastName(e.target.value)} required placeholder="Smith" /></div>
           </div>
-          <div className="form-group"><label>Email</label>
-            <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="your@email.com" required /></div>
-          <div className="form-group"><label>Password</label>
-            <input type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="••••••••" required /></div>
+          <div className="form-group"><label htmlFor="auth-register-email">Email</label>
+            <input id="auth-register-email" type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="your@email.com" required /></div>
+          <div className="form-group"><label htmlFor="auth-register-password">Password</label>
+            <input id="auth-register-password" type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="••••••••" required /></div>
           <button className="flow-next-btn" style={{width:"100%",marginTop:".5rem"}} disabled={loading}>
             {loading?"Creating account…":"Create account & continue"}</button>
         </form>
@@ -299,6 +303,10 @@ function AuthPanel({ onAuthComplete }) {
   );
 }
 
+/**
+ * Builds the passenger list from the selected flight search details
+ * Prefills the lead traveller when account information is available
+ */
 function buildPassengers(flight, user) {
   const adults   = Math.max(1, Number(flight?.searchParams?.adults)   || 1);
   const children =              Number(flight?.searchParams?.children) || 0;
@@ -326,14 +334,54 @@ function paxLabel(pax, idx) {
   return name ? `${typeLabel} ${idx+1}: ${name}` : `${typeLabel} ${idx+1}`;
 }
 
+// Helper functions for validation
+function getPassportError(passportNumber) {
+  if (!passportNumber) return "Passport/ID number is required";
+  const passportDigits = passportNumber.replace(/\D/g, "").length;
+  if (passportDigits < 8 || passportDigits > 9) return "Enter valid passport number";
+  return null;
+}
+
+function getPhoneError(phone) {
+  if (!phone) return "Phone number is required";
+  const phoneDigits = phone.replace(/\D/g, "");
+  if (phoneDigits.length < 10 || phoneDigits.length > 15) return "Enter valid phone number";
+  return null;
+}
+
+function getAgeError(dateOfBirth, isLeadPassenger) {
+  if (!isLeadPassenger) return null;
+  if (!dateOfBirth) return null;
+  
+  const dob = new Date(dateOfBirth);
+  const today = new Date();
+  let age = today.getFullYear() - dob.getFullYear();
+  const monthDiff = today.getMonth() - dob.getMonth();
+  
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dob.getDate())) {
+    age--;
+  }
+  
+  if (age < 16) {
+    return "Lead passenger must be 16 or older";
+  }
+  
+  return null;
+}
+
+/**
+ * Renders the full booking flow from passenger details to payment
+ * Keeps the checkout journey in one place so each step can share state
+ */
 export function BookingFlowPage({ flight, onNavigate, onComplete }) {
   const { user } = useAuth();
   const [step, setStep] = useState(0);
+  const flowStartRef = useRef(null);
   const hasFlight = Boolean(flight);
   const [passengers, setPassengers] = useState(() => buildPassengers(flight, user));
-  const [paxIdx,     setPaxIdx]     = useState(0); // which passenger we're editing
-  const [seats,      setSeats]      = useState([]); // seats[i] = seatId or null
-  const [seatPaxIdx, setSeatPaxIdx] = useState(0); // which passenger we're picking seat for
+  const [paxIdx,     setPaxIdx]     = useState(0);
+  const [seats,      setSeats]      = useState([]);
+  const [seatPaxIdx, setSeatPaxIdx] = useState(0);
   const [extras,     setExtras]     = useState([]);
   const [agreed,     setAgreed]     = useState(false);
   const [authDone,   setAuthDone]   = useState(!!user);
@@ -383,6 +431,12 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
   const activeCardNumber = useSavedCard && savedCard ? savedCard.maskedNumber : cardNum;
   const activeCardName = useSavedCard && savedCard ? savedCard.cardholderName : cardName;
   const activeCardExpiry = useSavedCard && savedCard ? savedCard.expiryDisplay : cardExp;
+
+  useEffect(() => {
+    if (step === 1 && flowStartRef.current) {
+      flowStartRef.current.focus();
+    }
+  }, [step]);
   const cardBrand = useSavedCard && savedCard ? "Saved card" : detectCardBrand(activeCardNumber);
   const cardNumberValid = useSavedCard && savedCard ? true : isValidCardNumber(activeCardNumber);
   const expiryValid = useSavedCard && savedCard ? true : isValidExpiry(activeCardExpiry);
@@ -425,7 +479,6 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
         userId: user?.id ?? null,
         flightId: String(flight.id), travelClass: flight.travelClass,
         seats, extras, totalPrice: total, passengers,
-        // legacy single-passenger field for server compat
         passenger: passengers[0],
         payment: {
           cardholderName: activeCardName,
@@ -449,14 +502,30 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
     finally { setSubmitting(false); }
   }
 
-
+  // Enhanced validation function
   function paxValid(p, i) {
-    return p.firstName && p.lastName && p.passportNumber && (i > 0 || p.email);
+    // Required for all: firstName, lastName, DOB, passport (8-9 chars)
+    if (!p.firstName || !p.lastName || !p.dateOfBirth) return false;
+    
+    const passportDigits = p.passportNumber.replace(/\D/g, "").length;
+    if (!p.passportNumber || passportDigits < 8 || passportDigits > 9) return false;
+    
+    // Lead passenger must be 16+
+    if (i === 0) {
+      if (getAgeError(p.dateOfBirth, true)) return false;
+      if (!p.email) return false;
+      const phoneDigits = p.phone.replace(/\D/g, "");
+      if (!p.phone || phoneDigits.length < 10 || phoneDigits.length > 15) return false;
+    }
+    
+    return true;
   }
+
   const allPaxValid = passengers.every((p, i) => paxValid(p, i));
 
   if (step === 0) return (
     <div className="booking-flow-page">
+      <h1 className="visually-hidden">Complete your booking</h1>
       <div className="booking-flow-stepper-bar"><FlowStepper step={0} /></div>
       <div className="booking-flow-body"><div className="flow-step-body">
         <h2 className="flow-step-title">Flight Summary</h2>
@@ -529,11 +598,16 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
     const p   = passengers[paxIdx];
     const isFirst = paxIdx === 0;
     const thisValid = paxValid(p, paxIdx);
+    const passportError = getPassportError(p.passportNumber);
+    const phoneError = isFirst ? getPhoneError(p.phone) : null;
+    const ageError = isFirst ? getAgeError(p.dateOfBirth, true) : null;
 
     return (
       <div className="booking-flow-page">
+        <h1 className="visually-hidden">Complete your booking</h1>
         <div className="booking-flow-stepper-bar"><FlowStepper step={1} /></div>
         <div className="booking-flow-body"><div className="flow-step-body">
+          <div ref={flowStartRef} tabIndex="-1" />
           <h2 className="flow-step-title">Passenger Details</h2>
 
           {/* Passenger tabs */}
@@ -556,37 +630,40 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
 
           {isFirst && user && <p className="flow-autofill-note">✓ Lead passenger auto-filled from your account</p>}
 
-          {/* Inputs — stable because they use stable setState from top-level array */}
+          {/* Inputs */}
           <div className="flow-form">
             <div className="form-row">
               <div className="form-group">
-                <label>First Name *</label>
-                <input value={p.firstName} onChange={e=>setPaxField(paxIdx,"firstName",e.target.value)} placeholder="Jane" />
+                <label htmlFor={`pax-first-name-${paxIdx}`}>First Name *</label>
+                <input id={`pax-first-name-${paxIdx}`} value={p.firstName} onChange={e=>setPaxField(paxIdx,"firstName",e.target.value)} placeholder="Jane" />
               </div>
               <div className="form-group">
-                <label>Last Name *</label>
-                <input value={p.lastName} onChange={e=>setPaxField(paxIdx,"lastName",e.target.value)} placeholder="Smith" />
+                <label htmlFor={`pax-last-name-${paxIdx}`}>Last Name *</label>
+                <input id={`pax-last-name-${paxIdx}`} value={p.lastName} onChange={e=>setPaxField(paxIdx,"lastName",e.target.value)} placeholder="Smith" />
               </div>
             </div>
             <div className="form-row">
               <div className="form-group">
-                <label>Date of Birth</label>
-                <input type="date" value={p.dateOfBirth} onChange={e=>setPaxField(paxIdx,"dateOfBirth",e.target.value)} />
+                <label htmlFor={`pax-dob-${paxIdx}`}>Date of Birth *</label>
+                <input id={`pax-dob-${paxIdx}`} type="date" value={p.dateOfBirth} onChange={e=>setPaxField(paxIdx,"dateOfBirth",e.target.value)} />
+                {ageError && <div className="form-field-error">{ageError}</div>}
               </div>
               <div className="form-group">
-                <label>Passport / ID Number *</label>
-                <input value={p.passportNumber} onChange={e=>setPaxField(paxIdx,"passportNumber",e.target.value)} placeholder="GB123456789" />
+                <label htmlFor={`pax-passport-${paxIdx}`}>Passport / ID Number *</label>
+                <input id={`pax-passport-${paxIdx}`} value={p.passportNumber} onChange={e=>setPaxField(paxIdx,"passportNumber",e.target.value)} placeholder="GB123456789" />
+                {passportError && <div className="form-field-error">{passportError}</div>}
               </div>
             </div>
             {isFirst && (
               <div className="form-row">
                 <div className="form-group">
-                  <label>Email * <span className="form-label-note">(lead passenger)</span></label>
-                  <input type="email" value={p.email} onChange={e=>setPaxField(paxIdx,"email",e.target.value)} placeholder="your@email.com" />
+                  <label htmlFor={`pax-email-${paxIdx}`}>Email * <span className="form-label-note">(lead passenger)</span></label>
+                  <input id={`pax-email-${paxIdx}`} type="email" value={p.email} onChange={e=>setPaxField(paxIdx,"email",e.target.value)} placeholder="your@email.com" />
                 </div>
                 <div className="form-group">
-                  <label>Phone</label>
-                  <input type="tel" value={p.phone} onChange={e=>setPaxField(paxIdx,"phone",e.target.value)} placeholder="+44 7700 000000" />
+                  <label htmlFor={`pax-phone-${paxIdx}`}>Phone *</label>
+                  <input id={`pax-phone-${paxIdx}`} type="tel" value={p.phone} onChange={e=>setPaxField(paxIdx,"phone",e.target.value)} placeholder="+44 7700 000000" />
+                  {phoneError && <div className="form-field-error">{phoneError}</div>}
                 </div>
               </div>
             )}
@@ -630,6 +707,7 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
 
     return (
       <div className="booking-flow-page">
+        <h1 className="visually-hidden">Complete your booking</h1>
         <div className="booking-flow-stepper-bar"><FlowStepper step={2} /></div>
         <div className="booking-flow-body"><div className="flow-step-body">
           <h2 className="flow-step-title">Choose Your Seat</h2>
@@ -679,6 +757,7 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
 
   if (step === 3) return (
     <div className="booking-flow-page">
+      <h1 className="visually-hidden">Complete your booking</h1>
       <div className="booking-flow-stepper-bar"><FlowStepper step={3} /></div>
       <div className="booking-flow-body"><div className="flow-step-body">
         <h2 className="flow-step-title">Add Extras</h2>
@@ -724,6 +803,7 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
 
   return (
     <div className="booking-flow-page">
+      <h1 className="visually-hidden">Complete your booking</h1>
       <div className="booking-flow-stepper-bar"><FlowStepper step={4} /></div>
       <div className="booking-flow-body"><div className="flow-step-body">
         <h2 className="flow-step-title">Review &amp; Pay</h2>
@@ -849,8 +929,9 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
             </div>
             <div className="form-row">
               <div className="form-group" style={{flex:2}}>
-                <label>Card number</label>
+                <label htmlFor="payment-card-number">Card number</label>
                 <input
+                  id="payment-card-number"
                   value={useSavedCard && savedCard ? savedCard.maskedNumber : cardNum}
                   onChange={e=>setCardNum(e.target.value)}
                   placeholder="1234 5678 9012 3456"
@@ -862,8 +943,9 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
                 )}
               </div>
               <div className="form-group">
-                <label>Expiry</label>
+                <label htmlFor="payment-card-expiry">Expiry</label>
                 <input
+                  id="payment-card-expiry"
                   value={useSavedCard && savedCard ? savedCard.expiryDisplay : cardExp}
                   onChange={e=>setCardExp(e.target.value)}
                   placeholder="MM / YY"
@@ -874,16 +956,17 @@ export function BookingFlowPage({ flight, onNavigate, onComplete }) {
                 )}
               </div>
               <div className="form-group">
-                <label>CVV</label>
-                <input type="password" value={cardCvv} onChange={e=>setCardCvv(e.target.value)} placeholder="123" />
+                <label htmlFor="payment-card-cvv">CVV</label>
+                <input id="payment-card-cvv" type="password" value={cardCvv} onChange={e=>setCardCvv(e.target.value)} placeholder="123" />
                 {cardCvv && !cvvValid && (
                   <div className="payment-field-error">Enter a valid CVV.</div>
                 )}
               </div>
             </div>
             <div className="form-group">
-              <label>Name on card</label>
+              <label htmlFor="payment-cardholder-name">Name on card</label>
               <input
+                id="payment-cardholder-name"
                 value={useSavedCard && savedCard ? savedCard.cardholderName : cardName}
                 onChange={e=>setCardName(e.target.value)}
                 placeholder="As it appears on your card"

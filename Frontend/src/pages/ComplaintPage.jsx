@@ -72,8 +72,9 @@ export function ComplaintPage() {
       <div className="form-page-body">
         <form className="complaint-form" onSubmit={handleSubmit}>
           <div className="form-group">
-            <label>Booking Reference</label>
+            <label htmlFor="complaint-booking-reference">Booking Reference</label>
             <input
+              id="complaint-booking-reference"
               name="bookingReference"
               placeholder="e.g. ABC123"
               value={form.bookingReference}
@@ -83,8 +84,9 @@ export function ComplaintPage() {
           </div>
 
           <div className="form-group">
-            <label>Issue Category</label>
+            <label htmlFor="complaint-category">Issue Category</label>
             <select
+              id="complaint-category"
               name="category"
               value={form.category}
               onChange={handleChange}
@@ -98,8 +100,9 @@ export function ComplaintPage() {
           </div>
 
           <div className="form-group">
-            <label>Description</label>
+            <label htmlFor="complaint-description">Description</label>
             <textarea
+              id="complaint-description"
               name="description"
               placeholder="Please describe the issue in as much detail as possible..."
               value={form.description}
@@ -110,8 +113,9 @@ export function ComplaintPage() {
           </div>
 
           <div className="form-group">
-            <label>Supporting Document (optional)</label>
+            <label htmlFor="complaint-file">Supporting Document (optional)</label>
             <input
+              id="complaint-file"
               type="file"
               accept=".pdf,.jpg,.jpeg,.png"
               onChange={(e) => setSelectedFileName(e.target.files?.[0]?.name || "")}

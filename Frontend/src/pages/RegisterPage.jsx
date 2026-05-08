@@ -52,8 +52,9 @@ export function RegisterPage({ onNavigate }) {
         <form onSubmit={handleSubmit} className="auth-form">
           <div className="form-row">
             <div className="form-group">
-              <label>First Name</label>
+              <label htmlFor="register-first-name">First Name</label>
               <input
+                id="register-first-name"
                 name="firstName"
                 placeholder="First name"
                 value={form.firstName}
@@ -62,8 +63,9 @@ export function RegisterPage({ onNavigate }) {
               />
             </div>
             <div className="form-group">
-              <label>Last Name</label>
+              <label htmlFor="register-last-name">Last Name</label>
               <input
+                id="register-last-name"
                 name="lastName"
                 placeholder="Last name"
                 value={form.lastName}
@@ -74,8 +76,9 @@ export function RegisterPage({ onNavigate }) {
           </div>
 
           <div className="form-group">
-            <label>Email</label>
+            <label htmlFor="register-email">Email</label>
             <input
+              id="register-email"
               type="email"
               name="email"
               placeholder="your@email.com"
@@ -86,8 +89,9 @@ export function RegisterPage({ onNavigate }) {
           </div>
 
           <div className="form-group">
-            <label>Phone</label>
+            <label htmlFor="register-phone">Phone</label>
             <input
+              id="register-phone"
               type="tel"
               name="phone"
               placeholder="+44 7700 000000"
@@ -98,8 +102,9 @@ export function RegisterPage({ onNavigate }) {
 
           <div className="form-row">
             <div className="form-group">
-              <label>Password</label>
+              <label htmlFor="register-password">Password</label>
               <input
+                id="register-password"
                 type="password"
                 name="password"
                 placeholder="Min. 8 characters"
@@ -110,8 +115,9 @@ export function RegisterPage({ onNavigate }) {
               />
             </div>
             <div className="form-group">
-              <label>Confirm Password</label>
+              <label htmlFor="register-confirm-password">Confirm Password</label>
               <input
+                id="register-confirm-password"
                 type="password"
                 name="confirmPassword"
                 placeholder="Repeat password"

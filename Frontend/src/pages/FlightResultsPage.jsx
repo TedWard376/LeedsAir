@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useFlights } from "../hooks/useFlights";
 import { buildApiUrl } from "../services/api";
 import { LoadingSpinner, ErrorMessage } from "../components/StatusMessages";
@@ -20,12 +20,9 @@ function ProgressBar({ currentStep = 0 }) {
 }
 
 // ── Safe local-date helpers (avoid timezone shift bugs) ───
-// Always work in local time — never call .toISOString() on a Date
-// constructed from a "YYYY-MM-DD" string, as that is parsed as UTC midnight
-// which shifts to the previous day in timezones behind UTC (e.g. UK in winter).
 function localDateFromIso(iso) {
   const [y, m, d] = iso.split("-").map(Number);
-  return new Date(y, m - 1, d); // local midnight
+  return new Date(y, m - 1, d);
 }
 function isoFromLocalDate(date) {
   const y = date.getFullYear();
@@ -87,15 +84,12 @@ function DatePriceBar({ from, to, selectedDate, onDateChange, windowDays = 3 }) 
   const [centerDate, setCenterDate] = useState(selectedDate || "");
   const { prices, loading } = useDatePrices(from, to, centerDate || selectedDate, windowDays);
 
-  // If selectedDate changes externally (e.g. user picks different date),
-  // recenter the bar so the selected date is always visible
   useEffect(() => {
     if (!selectedDate) return;
     if (!centerDate) {
       queueMicrotask(() => setCenterDate(selectedDate));
       return;
     }
-    // Check if selectedDate is within the current window
     const centerMs = localDateFromIso(centerDate).getTime();
     const selMs    = localDateFromIso(selectedDate).getTime();
     const dayMs    = 86400000;
@@ -169,12 +163,76 @@ const FARE_TIERS = {
   ],
 };
 
+// ── Focus trap for modal ──────────────────────────────────
+function useFocusTrap(isOpen, onClose) {
+  const modalRef = useRef(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const modal = modalRef.current;
+    if (!modal) return;
+
+    // Get focusable elements
+    const focusableElements = modal.querySelectorAll(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    const firstFocusable = focusableElements[0];
+    const lastFocusable = focusableElements[focusableElements.length - 1];
+
+    // Move focus to first element
+    if (firstFocusable) {
+      requestAnimationFrame(() => firstFocusable.focus());
+    }
+
+    // Handle Escape key
+    const handleEscape = (e) => {
+      if (e.key === "Escape") {
+        onClose();
+      }
+    };
+
+    // Trap focus with Tab
+    const handleKeyDown = (e) => {
+      if (e.key !== "Tab") return;
+
+      if (e.shiftKey) {
+        if (document.activeElement === firstFocusable) {
+          e.preventDefault();
+          lastFocusable?.focus();
+        }
+      } else {
+        if (document.activeElement === lastFocusable) {
+          e.preventDefault();
+          firstFocusable?.focus();
+        }
+      }
+    };
+
+    modal.addEventListener("keydown", handleEscape);
+    modal.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      modal.removeEventListener("keydown", handleEscape);
+      modal.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isOpen, onClose]);
+
+  return modalRef;
+}
+
 function FareTierModal({ flight, initialCabin, onSelect, onClose }) {
   const [cabinTab, setCabinTab] = useState(initialCabin || "economy");
   const tiers = FARE_TIERS[cabinTab];
+  const modalRef = useFocusTrap(true, onClose);
+
   return (
     <div className="fare-modal-overlay" onClick={onClose}>
-      <div className="fare-modal" onClick={e => e.stopPropagation()}>
+      <div 
+        ref={modalRef}
+        className="fare-modal" 
+        onClick={e => e.stopPropagation()}
+      >
         <div className="fare-modal-header">
           <div className="fare-modal-route">
             <span className="fmr-code">{flight.from}</span>
@@ -298,14 +356,15 @@ function FlightList({ from, to, date, searchParams, setFareModal }) {
 
       <div className="results-controls">
         <div className="results-filters">
-          <span className="controls-label">Filter by:</span>
-          <select className="results-select" value={filterStops} onChange={e => setFilterStops(e.target.value)}>
+          <label className="controls-label" htmlFor="filter-stops">Filter by:</label>
+          <select id="filter-stops" className="results-select" value={filterStops} onChange={e => setFilterStops(e.target.value)}>
             <option value="all">All flights</option>
             <option value="direct">Direct only</option>
             <option value="1stop">1 stop</option>
             <option value="2plus">2+ stops</option>
           </select>
-          <select className="results-select" onChange={e => setFilterMax(Number(e.target.value))}>
+          <label className="visually-hidden" htmlFor="filter-price">Maximum fare</label>
+          <select id="filter-price" className="results-select" onChange={e => setFilterMax(Number(e.target.value))}>
             <option value="9999">Any price</option>
             <option value="100">Up to £100</option>
             <option value="200">Up to £200</option>
@@ -314,8 +373,8 @@ function FlightList({ from, to, date, searchParams, setFareModal }) {
           </select>
         </div>
         <div className="results-sort">
-          <span className="controls-label">Sort by:</span>
-          <select className="results-select" value={sortBy} onChange={e => setSortBy(e.target.value)}>
+          <label className="controls-label" htmlFor="sort-by">Sort by:</label>
+          <select id="sort-by" className="results-select" value={sortBy} onChange={e => setSortBy(e.target.value)}>
             <option value="recommended">Recommended</option>
             <option value="price">Lowest price</option>
             <option value="duration">Shortest duration</option>
@@ -378,7 +437,7 @@ function OutboundSummary({ flight }) {
 // ── Main FlightResultsPage ────────────────────────────────
 export function FlightResultsPage({ searchParams, onNavigate, onSelectFlight }) {
   const isReturn     = searchParams?.tripType === "round-trip";
-  const [phase, setPhase] = useState("outbound"); // "outbound" | "return"
+  const [phase, setPhase] = useState("outbound");
   const [outboundFlight, setOutboundFlight] = useState(null);
   const [fareModal, setFareModal] = useState(null);
 
@@ -387,7 +446,6 @@ export function FlightResultsPage({ searchParams, onNavigate, onSelectFlight }) 
   const paxCount = (Number(searchParams?.adults) || 1) + (Number(searchParams?.children) || 0);
 
   const outboundDate = searchParams?.departureDate || "";
-  // If no return date was selected in the search form, default to the day after departure
   const returnDate = searchParams?.returnDate || (outboundDate ? addDays(outboundDate, 1) : "");
 
   const stepIndex = phase === "return" ? 1 : 0;
@@ -399,7 +457,6 @@ export function FlightResultsPage({ searchParams, onNavigate, onSelectFlight }) 
       setPhase("return");
       window.scrollTo(0, 0);
     } else if (isReturn && phase === "return") {
-      // Combine outbound + return into one object for the booking flow
       onSelectFlight({ ...outboundFlight, returnFlight: flightWithFare });
     } else {
       onSelectFlight(flightWithFare);
@@ -443,13 +500,12 @@ export function FlightResultsPage({ searchParams, onNavigate, onSelectFlight }) 
         </h1>
         <p className="results-subtitle">Prices are per adult, including all taxes, fees and carrier charges.</p>
 
-        {/* Show outbound summary when picking return */}
         {phase === "return" && outboundFlight && (
           <OutboundSummary flight={outboundFlight} />
         )}
 
         <FlightList
-          key={phase} // remount when phase changes so date bar resets
+          key={phase}
           from={phase === "return" ? to   : from}
           to={phase   === "return" ? from : to}
           date={phase === "return" ? returnDate : outboundDate}

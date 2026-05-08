@@ -14,6 +14,7 @@ export function FlightCard({ flight, onSelect }) {
         <div className="time-block">
           <span className="time">{flight.departureTime}</span>
           <span className="airport">{flight.from}</span>
+          <span className="date" style={{fontSize: "0.75rem", color: "var(--muted)", marginTop: "0.2rem"}}>{flight.departureDate}</span>
         </div>
         <div className="duration-block">
           <span className="duration">{flight.duration}</span>
