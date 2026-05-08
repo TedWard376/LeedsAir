@@ -10,6 +10,10 @@ import { LoadingSpinner, ErrorMessage } from "../components/StatusMessages";
 const STATUS_FILTERS = ["All", "Confirmed", "Cancelled", "Pending", "CheckedIn"];
 const BOOKINGS_PER_PAGE = 20;
 
+/**
+ * Builds a simple csv export from the current booking rows
+ * Lets admins take a quick snapshot of the visible data
+ */
 function exportCSV(rows, filename) {
   if (!rows.length) return;
   const headers = ["Reference", "Passenger", "Route", "Date", "Class", "Status", "Cancellation Reason", "Price"];
@@ -56,6 +60,10 @@ function BarChart({ data, labelKey, valueKey, prefix = "", color = "var(--sky)" 
   );
 }
 
+/**
+ * Renders the small summary cards used across the admin dashboard
+ * Keeps metric displays looking consistent between tabs
+ */
 function MetricCard({ value, label, icon, highlight }) {
   return (
     <div className={`metric-card ${highlight ? "metric-card--highlight" : ""}`}>
@@ -71,6 +79,10 @@ function formatRequestType(type) {
   return type.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+/**
+ * Builds the top level booking metrics used on the admin page
+ * Reuses the loaded booking data instead of asking the backend twice
+ */
 function buildMetricsFromBookings(bookings) {
   const cancellations = bookings.filter((booking) => booking.status === "Cancelled").length;
   const totalRevenue = bookings
@@ -93,6 +105,10 @@ function buildMetricsFromBookings(bookings) {
   };
 }
 
+/**
+ * Renders the admin dashboard for bookings reports and support work
+ * Keeps the main admin flows together in one page component
+ */
 export function AdminDashboardPage({ onNavigate }) {
   const [tab, setTab] = useState("bookings");
   const [bookings, setBookings] = useState([]);

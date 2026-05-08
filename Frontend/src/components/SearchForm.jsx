@@ -5,6 +5,10 @@ const MONTHS = ["January","February","March","April","May","June","July","August
 const DAYS   = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 
 // ── Hook: fetch lowest prices per day for a route + month ─
+/**
+ * Loads the lowest known daily prices for the selected route
+ * Helps the date picker show live fare hints while staying reusable
+ */
 function useMonthPrices(from, to) {
   const [prices,  setPrices]  = useState({}); // { "2026-04-15": 89, ... }
   const [loadedRouteKey, setLoadedRouteKey] = useState("");
@@ -51,6 +55,10 @@ function useMonthPrices(from, to) {
 }
 
 // ── AirportPicker ─────────────────────────────────────────
+/**
+ * Renders the airport search dropdown used for departure and arrival selection
+ * Keeps route hints and keyboard interactions in one place
+ */
 function AirportPicker({ label, value, onChange, exclude, airports = [] }) {
   const safeLabel = String(label || "airport").toLowerCase().replace(/[^a-z0-9]+/g, "-");
   const airportInputId = `airport-${safeLabel}`;
@@ -187,6 +195,10 @@ function AirportPicker({ label, value, onChange, exclude, airports = [] }) {
 }
 
 // ── CalendarPicker — fetches real prices from API ─────────
+/**
+ * Renders the date picker with route based fare hints
+ * Keeps the booking form focused on one calendar experience
+ */
 function CalendarPicker({ label, value, onChange, minDate, icon, from, to }) {
   const safeLabel = String(label || "date").toLowerCase().replace(/[^a-z0-9]+/g, "-");
   const calInputId = `date-${safeLabel}`;
@@ -406,6 +418,10 @@ function PassengerCounter({ label, subtitle, min, max, value, onChange }) {
 }
 
 // ── SearchForm ────────────────────────────────────────────
+/**
+ * Renders the main booking search form on the home page
+ * Combines route dates class and passenger controls in one flow
+ */
 export function SearchForm({ onSearch, initialFrom = "" }) {
   const [tripType,      setTripType]      = useState("one-way");
   const [from,          setFrom]          = useState(initialFrom);

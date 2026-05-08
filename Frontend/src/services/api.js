@@ -31,6 +31,10 @@ function normalizeErrorMessage(message, path) {
 }
 
 // ── Helpers ──────────────────────────────────────────────
+/**
+ * Sends a request to the backend and normalises common error cases
+ * Keeps the frontend api layer using one fetch path
+ */
 async function request(path, options = {}, authTokenKey = "token") {
   const token = authTokenKey ? localStorage.getItem(authTokenKey) : null;
   const headers = { "Content-Type": "application/json", ...options.headers };
@@ -69,12 +73,20 @@ export async function getProfile() {
 let cachedAirports = null;
 let cachedHomeData = null;
 let cachedHomeDataPromise = null;
+/**
+ * Loads the airport list and keeps it cached for reuse
+ * Helps the search form stay responsive after the first request
+ */
 export async function getAirports() {
   if (cachedAirports) return cachedAirports;
   cachedAirports = await request("/airports");
   return cachedAirports;
 }
 
+/**
+ * Loads the home page payload and reuses the first response
+ * Avoids duplicate landing page requests during startup
+ */
 export async function getHomeData() {
   if (cachedHomeData) return cachedHomeData;
   if (!cachedHomeDataPromise) {
@@ -140,6 +152,10 @@ export async function submitComplaint(data) {
 
 
 // ── Admin-specific request (uses adminToken) ──────────────
+/**
+ * Sends an authenticated admin request with the admin token
+ * Keeps admin calls separate from customer api traffic
+ */
 async function adminRequest(path, options = {}) {
   return request(path, options, "adminToken");
 }
