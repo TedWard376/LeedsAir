@@ -33,8 +33,9 @@ export function AdminLoginPage({ onNavigate }) {
 
         <form onSubmit={handleSubmit} className="auth-form">
           <div className="form-group">
-            <label>Username</label>
+            <label htmlFor="admin-username">Username</label>
             <input
+              id="admin-username"
               placeholder="Admin username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
@@ -42,8 +43,9 @@ export function AdminLoginPage({ onNavigate }) {
             />
           </div>
           <div className="form-group">
-            <label>Password</label>
+            <label htmlFor="admin-password">Password</label>
             <input
+              id="admin-password"
               type="password"
               placeholder="••••••••"
               value={password}

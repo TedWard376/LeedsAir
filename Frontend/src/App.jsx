@@ -145,8 +145,11 @@ function AppInner() {
 
   return (
     <div className="app">
+      <div className="skip-links">
+        <a href="#main-content" className="skip-link">Skip to main content</a>
+      </div>
       {!isAdminPage && <Navbar activePage={page} onNavigate={setPage} />}
-      <main className="main-content">{renderPage()}</main>
+      <main id="main-content" className="main-content">{renderPage()}</main>
       {!isAdminPage && (
         <footer className="footer">
           <div className="footer-inner">

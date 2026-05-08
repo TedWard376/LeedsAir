@@ -443,12 +443,13 @@ export function ManageBookingPage({ initialLookup, onLookupConsumed }) {
 
       <form className="manage-lookup-form" onSubmit={handleLookup}>
         <div className="form-group">
-          <label>Booking Reference</label>
-          <input placeholder="e.g. ABC123" value={ref} onChange={(e) => setRef(e.target.value)} required />
+          <label htmlFor="manage-booking-reference">Booking Reference</label>
+          <input id="manage-booking-reference" placeholder="e.g. ABC123" value={ref} onChange={(e) => setRef(e.target.value)} required />
         </div>
         <div className="form-group">
-          <label>Last Name</label>
+          <label htmlFor="manage-last-name">Last Name</label>
           <input
+            id="manage-last-name"
             placeholder="Passenger surname"
             value={lastName}
             onChange={(e) => setLastName(e.target.value)}
@@ -465,7 +466,7 @@ export function ManageBookingPage({ initialLookup, onLookupConsumed }) {
 
       {booking && (
         <div className="booking-detail-card">
-          <h3>Booking Found</h3>
+          <h2>Booking Found</h2>
           <div className="detail-grid">
             <div><span>Reference</span><strong>{booking.bookingReference || booking.id}</strong></div>
             <div><span>Status</span><strong>{displayStatus}</strong></div>
@@ -498,13 +499,13 @@ export function ManageBookingPage({ initialLookup, onLookupConsumed }) {
 
           {activeAction === "change-date" && (
             <div className="manage-action-panel">
-              <h4>Change date and flight</h4>
+              <h3>Change date and flight</h3>
               <p>Select your new date, choose a flight, then submit for admin approval.</p>
               {dateChangeStep === "choose-date" && (
                 <>
                   <div className="form-group">
-                    <label>New departure date</label>
-                    <input type="date" value={newDate} onChange={(e) => setNewDate(e.target.value)} />
+                    <label htmlFor="manage-new-departure-date">New departure date</label>
+                    <input id="manage-new-departure-date" type="date" value={newDate} onChange={(e) => setNewDate(e.target.value)} />
                   </div>
                   <div className="manage-action-buttons">
                     <button type="button" className="flow-back-btn" onClick={() => setActiveAction(null)}>Close</button>
@@ -545,7 +546,9 @@ export function ManageBookingPage({ initialLookup, onLookupConsumed }) {
                       <strong> £{dateChangeCharge.toFixed(2)}</strong>
                     </div>
                   )}
+                  <label className="form-group label" htmlFor="date-change-note">Optional note for admin</label>
                   <textarea
+                    id="date-change-note"
                     className="manage-action-textarea"
                     value={dateChangeNote}
                     onChange={(e) => setDateChangeNote(e.target.value)}
@@ -565,7 +568,7 @@ export function ManageBookingPage({ initialLookup, onLookupConsumed }) {
 
           {activeAction === "add-extras" && (
             <div className="manage-action-panel">
-              <h4>Add extras</h4>
+              <h3>Add extras</h3>
               <p>Select extras to add immediately to this booking.</p>
               <ul className="extras-info-list">
                 <li>Extras are optional and can be added before travel if still available.</li>
@@ -614,7 +617,9 @@ export function ManageBookingPage({ initialLookup, onLookupConsumed }) {
                 onSelectSeat={setSelectedSeat}
                 travelClass={booking.travelClass || "economy"}
               />
+              <label className="form-group label" htmlFor="extras-note">Optional note for admin</label>
               <textarea
+                id="extras-note"
                 className="manage-action-textarea"
                 value={extrasNote}
                 onChange={(e) => setExtrasNote(e.target.value)}
@@ -636,9 +641,11 @@ export function ManageBookingPage({ initialLookup, onLookupConsumed }) {
 
           {activeAction === "name-change" && (
             <div className="manage-action-panel">
-              <h4>Name change request</h4>
+              <h3>Name change request</h3>
               <p>Enter the passenger name exactly as it appears on the travel document.</p>
+              <label htmlFor="manage-name-change" className="visually-hidden">New full name</label>
               <input
+                id="manage-name-change"
                 className="manage-action-textarea"
                 style={{ minHeight: "auto" }}
                 value={nameChangeValue}
@@ -656,8 +663,10 @@ export function ManageBookingPage({ initialLookup, onLookupConsumed }) {
 
           {activeAction === "other-request" && (
             <div className="manage-action-panel">
-              <h4>Other request</h4>
+              <h3>Other request</h3>
+              <label htmlFor="manage-other-request" className="visually-hidden">Other request details</label>
               <textarea
+                id="manage-other-request"
                 className="manage-action-textarea"
                 value={requestText}
                 onChange={(e) => setRequestText(e.target.value)}
@@ -675,8 +684,10 @@ export function ManageBookingPage({ initialLookup, onLookupConsumed }) {
 
           {activeAction === "cancel" && (
             <div className="manage-action-panel">
-              <h4>Cancel this booking</h4>
+              <h3>Cancel this booking</h3>
+              <label htmlFor="manage-cancel-reason" className="visually-hidden">Cancellation reason</label>
               <textarea
+                id="manage-cancel-reason"
                 className="manage-action-textarea"
                 value={requestText}
                 onChange={(e) => setRequestText(e.target.value)}
@@ -694,7 +705,7 @@ export function ManageBookingPage({ initialLookup, onLookupConsumed }) {
 
           {activeAction === "checkin" && (
             <div className="manage-action-panel">
-              <h4>Check in for your flight</h4>
+              <h3>Check in for your flight</h3>
               <p>You can generate your boarding pass now.</p>
               <div className="manage-action-buttons">
                 <button type="button" className="flow-back-btn" onClick={() => setActiveAction(null)}>Close</button>
@@ -709,7 +720,7 @@ export function ManageBookingPage({ initialLookup, onLookupConsumed }) {
 
           <div className="manage-history-card">
             <div className="manage-history-header">
-              <h3>Request History</h3>
+              <h2>Request History</h2>
               <p>Track every cancellation and change request for this booking.</p>
             </div>
             {requestHistory.length === 0 ? (
@@ -736,7 +747,7 @@ export function ManageBookingPage({ initialLookup, onLookupConsumed }) {
 
           {boardingPass && (
             <div className="booking-detail-card" style={{ marginTop: "1rem" }}>
-              <h3>Boarding Pass</h3>
+              <h2>Boarding Pass</h2>
               <div className="detail-grid">
                 <div><span>Reference</span><strong>{boardingPass.bookingReference}</strong></div>
                 <div><span>Seat</span><strong>{boardingPass.seat}</strong></div>

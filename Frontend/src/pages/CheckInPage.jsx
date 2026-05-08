@@ -144,8 +144,9 @@ export function CheckInPage({ initialLookup, onLookupConsumed }) {
         {step === "lookup" && (
           <form className="manage-lookup-form" onSubmit={handleLookup}>
             <div className="form-group">
-              <label>Booking Reference</label>
+              <label htmlFor="checkin-booking-reference">Booking Reference</label>
               <input
+                id="checkin-booking-reference"
                 placeholder="e.g. ABC123"
                 value={ref}
                 onChange={(e) => setRef(e.target.value)}
@@ -153,8 +154,9 @@ export function CheckInPage({ initialLookup, onLookupConsumed }) {
               />
             </div>
             <div className="form-group">
-              <label>Last Name</label>
+              <label htmlFor="checkin-last-name">Last Name</label>
               <input
+                id="checkin-last-name"
                 placeholder="Passenger surname"
                 value={lastName}
                 onChange={(e) => setLastName(e.target.value)}
@@ -172,7 +174,7 @@ export function CheckInPage({ initialLookup, onLookupConsumed }) {
 
         {step === "confirm" && booking && (
           <div className="checkin-confirm">
-            <h3>Please confirm your details</h3>
+            <h2>Please confirm your details</h2>
             <div className="detail-grid">
               <div><span>Passenger</span><strong>{booking.passenger?.firstName} {booking.passenger?.lastName}</strong></div>
               <div><span>Route</span><strong>{booking.flight?.from || booking.from} → {booking.flight?.to || booking.to}</strong></div>

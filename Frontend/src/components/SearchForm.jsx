@@ -52,6 +52,8 @@ function useMonthPrices(from, to) {
 
 // ── AirportPicker ─────────────────────────────────────────
 function AirportPicker({ label, value, onChange, exclude, airports = [] }) {
+  const safeLabel = String(label || "airport").toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  const airportInputId = `airport-${safeLabel}`;
   const [query,   setQuery]  = useState("");
   const [open,    setOpen]   = useState(false);
   const wrapRef              = useRef(null);
@@ -100,8 +102,19 @@ function AirportPicker({ label, value, onChange, exclude, airports = [] }) {
 
   return (
     <div className="airport-picker" ref={wrapRef}>
-      <label className="field-label">{label}</label>
-      <div className={"airport-input-wrap" + (open ? " open" : "") + (value ? " has-value" : "")} onClick={() => setOpen(true)}>
+      <label className="field-label" htmlFor={airportInputId}>{label}</label>
+      <div className={"airport-input-wrap" + (open ? " open" : "") + (value ? " has-value" : "")}
+           onClick={() => setOpen(true)}
+           onKeyDown={(e) => {
+             if (!open && (e.key === "Enter" || e.key === " ")) {
+               e.preventDefault();
+               setOpen(true);
+             }
+           }}
+           role="combobox"
+           aria-expanded={open}
+           aria-haspopup="listbox"
+           tabIndex={selected && !open ? 0 : undefined}>
         {selected && !open ? (
           <div className="airport-selected">
             <div className="airport-selected-text">
@@ -110,14 +123,14 @@ function AirportPicker({ label, value, onChange, exclude, airports = [] }) {
             </div>
           </div>
         ) : (
-          <input ref={inputRef} className="airport-text-input" placeholder="City or airport code..."
+          <input id={airportInputId} ref={inputRef} className="airport-text-input" placeholder="City or airport code..."
             value={query} onChange={e => { setQuery(e.target.value); setOpen(true); }}
             onFocus={() => setOpen(true)} autoComplete="off" />
         )}
         <span className="airport-chevron">{open ? "▲" : "▼"}</span>
       </div>
       {open && (
-        <div className="airport-dropdown">
+        <div className="airport-dropdown" role="listbox">
           {!query && <div className="airport-dropdown-hint">Popular airports</div>}
           {filtered.length === 0 && <div className="airport-no-results">No airports found for "{query}"</div>}
           {filtered.length > 0 ? (
@@ -144,8 +157,15 @@ function AirportPicker({ label, value, onChange, exclude, airports = [] }) {
                   key={a.code}
                   className={"airport-option" + (value === a.code ? " selected" : "")}
                   onMouseDown={e => { e.preventDefault(); select(a); }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      select(a);
+                    }
+                  }}
                   role="option"
-                  aria-selected={value === a.code}>
+                  aria-selected={value === a.code}
+                  tabIndex={0}>
                   <div style={{ display: "flex", alignItems: "center", gap: "8px", width: "100%" }}>
                     <div className="airport-option-info" style={{ flex: 1, minWidth: 0 }}>
                       <div className="airport-option-top" style={{ display: "flex", alignItems: "center", gap: "6px" }}>
@@ -168,6 +188,8 @@ function AirportPicker({ label, value, onChange, exclude, airports = [] }) {
 
 // ── CalendarPicker — fetches real prices from API ─────────
 function CalendarPicker({ label, value, onChange, minDate, icon, from, to }) {
+  const safeLabel = String(label || "date").toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  const calInputId = `date-${safeLabel}`;
   const [open, setOpen] = useState(false);
   const wrapRef         = useRef(null);
 
@@ -254,9 +276,26 @@ function CalendarPicker({ label, value, onChange, minDate, icon, from, to }) {
 
   return (
     <div className="cal-picker" ref={wrapRef}>
-      <label className="field-label">{label}</label>
+      <label className="field-label" htmlFor={calInputId}>{label}</label>
       <div className={"cal-input-wrap" + (open ? " open" : "") + (value ? " has-value" : "")}
-           onClick={() => setOpen(o => !o)}>
+           onClick={() => setOpen(o => !o)}
+           onKeyDown={(e) => {
+             if (e.key === "Enter" || e.key === " ") {
+               e.preventDefault();
+               setOpen(o => !o);
+             }
+           }}
+           role="button"
+           aria-haspopup="dialog"
+           aria-expanded={open}
+           tabIndex={0}>
+        <input
+          id={calInputId}
+          readOnly
+          value={value || ""}
+          tabIndex={-1}
+          style={{ position: "absolute", width: 1, height: 1, padding: 0, margin: -1, overflow: "hidden", clip: "rect(0, 0, 0, 0)", whiteSpace: "nowrap", border: 0 }}
+        />
         <span className="cal-input-icon">{icon || "📅"}</span>
         <span className="cal-display-text">
           {value ? formatDisplay(value) : <span className="cal-placeholder">Select date</span>}
@@ -308,7 +347,15 @@ function CalendarPicker({ label, value, onChange, minDate, icon, from, to }) {
                     isWeekend && !isDisabled ? "cal-weekend" : "",
                     isLowest   ? "cal-best-fare" : "",
                   ].filter(Boolean).join(" ")}
-                  onClick={() => selectDay(day)}>
+                  onClick={() => selectDay(day)}
+                  onKeyDown={(e) => {
+                    if (!isDisabled && (e.key === "Enter" || e.key === " ")) {
+                      e.preventDefault();
+                      selectDay(day);
+                    }
+                  }}
+                  role="button"
+                  tabIndex={isDisabled ? -1 : 0}>
                   <span className="cal-day-num">{day}</span>
                   {/* Show price tag only if fare exists (flight on that day for this route) */}
                   {fare !== null && fare !== undefined && !isDisabled && (
@@ -428,8 +475,8 @@ export function SearchForm({ onSearch, initialFrom = "" }) {
             minDate={departureDate || today} icon="↩" from={to} to={from} />
         )}
         <div className="class-wrap">
-          <label className="field-label">Class</label>
-          <select className="class-select" value={travelClass} onChange={e => setTravelClass(e.target.value)}>
+          <label className="field-label" htmlFor="travel-class">Class</label>
+          <select id="travel-class" className="class-select" value={travelClass} onChange={e => setTravelClass(e.target.value)}>
             <option value="economy">Economy</option>
             <option value="business">✦ Business</option>
           </select>
@@ -438,7 +485,7 @@ export function SearchForm({ onSearch, initialFrom = "" }) {
 
       <div className="pax-search-row">
         <div className="pax-wrap">
-          <label className="field-label">Passengers · <span style={{color:"var(--sky)",fontWeight:600}}>{total} selected</span>{total >= 7 && <span style={{color:"#dc2626",fontSize:".75rem",marginLeft:".5rem"}}>Max 7</span>}</label>
+          <p className="field-label">Passengers · <span style={{color:"var(--sky)",fontWeight:600}}>{total} selected</span>{total >= 7 && <span style={{color:"#dc2626",fontSize:".75rem",marginLeft:".5rem"}}>Max 7</span>}</p>
           <div className="pax-grid">
             <PassengerCounter label="Adults"   subtitle="16+"  min={1} max={7 - children - infants} value={adults}   onChange={v => setAdults(Math.min(v, 7 - children - infants))} />
             <PassengerCounter label="Children" subtitle="2–15" min={0} max={7 - adults - infants}   value={children} onChange={v => setChildren(Math.min(v, 7 - adults - infants))} />
