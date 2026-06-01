@@ -1,68 +1,89 @@
 # LeedsAir Flight Booking System
 
-LeedsAir is a full-stack flight booking project with a React + Vite frontend and a Kotlin + Ktor backend.
+A full-stack flight booking platform developed as part of a university software engineering team project.
 
-## Acknowledgement
+The application allows customers to search for flights, manage bookings, check in online, submit complaints, and participate in a loyalty programme. An administrative dashboard provides booking management, reporting, and operational metrics.
 
-Claude Haiku 4.5 was used to help support the creation of frontend files and testing during development.
+## Technologies
+
+### Frontend
+
+* React
+* Vite
+* JavaScript
+* REST APIs
+
+### Backend
+
+* Kotlin
+* Ktor
+* PostgreSQL
+* Flyway
+
+### Development Tools
+
+* Git & GitHub
+* CI/CD Pipelines
+* Integration Testing
+
+## Features
+
+### Customer Features
+
+* User registration and authentication
+* Flight search and filtering
+* Flight booking management
+* Online check-in
+* Loyalty rewards system
+* Complaint submission
+
+### Administrative Features
+
+* Admin authentication
+* Booking management
+* Business metrics dashboard
+* Reporting functionality
+
+## My Contributions
+
+As part of a collaborative software engineering team, I contributed primarily to frontend development and system integration.
+
+My work included:
+
+* Developing responsive React user interfaces for the flight booking workflow.
+* Creating reusable UI components to support maintainable and scalable development.
+* Integrating frontend functionality with backend REST APIs.
+* Contributing to testing activities to improve reliability and reduce defects.
+* Participating in Git-based collaborative development workflows.
+* Supporting CI/CD processes and code integration activities.
+
+Through this project I gained experience in:
+
+* Modern React development
+* API integration
+* Team-based software engineering
+* Agile development practices
+* Collaborative Git workflows
+* Software testing and debugging
 
 ## Project Structure
 
 ```text
-.
-|-- Frontend/              # React + Vite UI
-|   |-- src/
-|   |   |-- components/
-|   |   |-- context/
-|   |   |-- hooks/
-|   |   |-- pages/
-|   |   `-- services/
-|   `-- package.json
-|-- backend/               # Ktor API + Flyway + PostgreSQL
-|   |-- src/main/kotlin/flightbooking/
-|   |   |-- Application.kt
-|   |   |-- Routing.kt
-|   |   |-- db/
-|   |   `-- service/
-|   |-- src/main/resources/
-|   |   |-- application.yaml
-|   |   |-- data/
-|   |   `-- db/migration/
-|   `-- build.gradle.kts
-`-- README.md
+Frontend/
+├── src/
+│   ├── components/
+│   ├── context/
+│   ├── hooks/
+│   ├── pages/
+│   └── services/
+
+backend/
+├── src/main/kotlin/flightbooking/
+├── src/main/resources/
+└── build.gradle.kts
 ```
 
-## Current Backend Endpoints
-
-The backend currently exposes these routes:
-
-```text
-GET  /api/home
-GET  /api/flights?from=LBA&to=DUB&departureDate=2026-04-15
-
-POST /api/auth/register
-POST /api/auth/login
-GET  /api/auth/profile
-
-GET  /api/bookings?userId=1
-GET  /api/bookings/lookup?ref=LEEDS1A&lastName=Smith
-POST /api/bookings
-PUT  /api/bookings/{id}
-POST /api/bookings/{id}/cancel
-POST /api/bookings/{id}/checkin
-
-GET  /api/loyalty
-POST /api/loyalty/redeem
-
-POST /api/complaints
-
-POST /api/admin/auth/login
-GET  /api/admin/bookings
-GET  /api/admin/metrics
-GET  /api/admin/reports
-```
-
-## Running The App
+## Running The Application
 
 ### Frontend
 
@@ -80,41 +101,28 @@ cd backend
 ./gradlew bootRun
 ```
 
-The Ktor API runs on `http://localhost:8080`.
+The backend API runs on:
 
-## Backend Tests
+```text
+http://localhost:8080
+```
+
+## Testing
+
+Backend tests currently cover:
+
+* Flight schedule loading
+* Authentication validation
+* Route behaviour
+* Error handling scenarios
+
+Run tests using:
 
 ```bash
 cd backend
 ./gradlew test
 ```
 
-Current backend tests cover:
+## Acknowledgement
 
-- CSV flight schedule loading
-- admin login token generation and validation
-- a small set of routing and auth rejection cases
-
-Dedicated security testing notes and follow-up checklist live in [SECURITY_TESTING.md](SECURITY_TESTING.md).
-
-## Data And Database
-
-- Flyway migrations live in `backend/src/main/resources/db/migration/`
-- Seed CSV files live in `backend/src/main/resources/data/`
-- Startup seeding runs when `seed.runOnStartup=true` or `RUN_CSV_SEED=true`
-- Flight schedule data is loaded from `FlightSchedule.csv`
-
-## Admin Access to see staff login
-
-The admin API uses a lightweight token-based login for now.
-
-- Default username: `admin`
-- Default password: `admin12345`
-- Override with `ADMIN_USERNAME` and `ADMIN_PASSWORD`
-
-## Demo Account details
-
-- Username: 'demo.customer@leedsair.local'
-- Password: 'demo12345'
-  
-
+This project was completed as part of a university software engineering module.
