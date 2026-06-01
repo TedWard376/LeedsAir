@@ -14,7 +14,7 @@ The project was built as a collaborative full-stack application with a React fro
 
 * React
 * Vite
-* JavaScript (ES6+)
+* JavaScript
 * REST API integration
 
 ### Backend
