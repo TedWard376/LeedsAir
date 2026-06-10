@@ -1,102 +1,153 @@
 # LeedsAir Flight Booking System
 
-A full-stack flight booking system developed as part of a university software engineering team project at the University of Leeds.
+A full-stack flight booking system developed as part of a team software engineering project at the University of Leeds.
 
-The system allows users to search for flights, manage bookings, complete online check-in, and submit support requests. It also includes an administrative interface for managing bookings, monitoring system activity, and generating operational reports.
+The application enables customers to search for flights, manage bookings, complete online check-in, and submit support requests. It also provides administrative functionality for managing bookings, monitoring system activity, and generating operational reports.
 
-The project was built as a collaborative full-stack application with a React frontend and a Kotlin/Ktor backend, communicating via REST APIs and backed by a PostgreSQL database.
+The system was developed using a React frontend and a Kotlin/Ktor backend, communicating through REST APIs and backed by a PostgreSQL database.
 
----
-
-## Tech Stack
+## Technologies Used
 
 ### Frontend
 
 * React
 * Vite
 * JavaScript
-* REST API integration
+* REST API Integration
 
 ### Backend
 
 * Kotlin
-* Ktor framework
+* Ktor
 * PostgreSQL
-* Flyway database migrations
+* Flyway Database Migrations
 
-### Development & Tools
+### Development Tools
 
-* Git & GitHub (team-based workflow)
-* REST API design
-* Integration testing
-* CI/CD practices
+* Git and GitHub
+* GitHub Actions
+* REST API Design
+* Unit Testing
+* API Integration Testing
+* Continuous Integration
 
 ---
 
 ## Key Features
 
-### Customer-Facing Features
+### Customer Features
 
 * User registration and authentication
-* Flight search with filtering (origin, destination, date)
+* Flight search with destination, origin, and date filtering
 * Booking creation and management
-* Online check-in flow
+* Online check-in workflow
 * Loyalty rewards system
-* Customer complaint submission system
+* Customer complaint submission
 
 ### Administrative Features
 
-* Admin authentication system
+* Administrator authentication
 * Booking management dashboard
-* Reporting and operational metrics
-* System monitoring endpoints
+* Operational reporting
+* System monitoring functionality
 
 ---
 
 ## My Contributions
 
-Within the team, I focused primarily on frontend development and system integration.
+My primary responsibility within the team was frontend development and frontend-backend integration.
 
-My contributions included:
+Key contributions included:
 
-* Building React-based user interfaces for the flight search and booking workflow
-* Developing reusable frontend components to support maintainability and scalability
-* Implementing API integration between frontend services and backend endpoints
-* Supporting integration testing and debugging across frontend-backend communication
-* Collaborating with team members using Git-based workflows (branching, merging, code reviews)
+* Developed React-based interfaces for flight search, booking, and user interactions
+* Built reusable frontend components to improve maintainability and consistency across the application
+* Integrated frontend services with backend REST API endpoints
+* Diagnosed and resolved frontend-backend communication issues to ensure reliable API interactions
+* Collaborated using Git-based workflows, including branching, pull requests, code reviews, and issue resolution
+* Contributed to automated testing and build validation workflows using GitHub Actions
 
 ---
 
-## Technical Learning Outcomes
+## Testing
+
+The project incorporated automated testing and build validation throughout development.
+
+### Frontend Unit Testing
+
+Frontend tests covered utility functions, user interface components, and API service behaviour, including:
+
+* Price formatting and calculation utilities
+* Passenger and flight information formatting
+* FlightCard component rendering and selection handling
+* Navbar authentication state rendering
+* Flight retrieval functionality
+* Authentication request handling
+* Booking creation workflows
+
+### API Integration Testing
+
+API integration tests validated frontend service behaviour, including:
+
+* API URL construction
+* Authentication token handling
+* Administrative endpoint access
+* Booking request payload generation
+* Response processing and error handling
+
+Mocked API requests were used to verify application behaviour without requiring a live backend connection.
+
+### Backend Testing
+
+Backend test coverage included:
+
+* Flight schedule loading validation
+* Authentication and authorisation checks
+* API routing behaviour
+* Error handling scenarios
+* Edge case validation
+
+### Continuous Integration
+
+GitHub Actions workflows were used to automate:
+
+* Unit test execution
+* Integration test execution
+* Build verification
+
+These checks helped identify issues early and ensured code changes remained compatible across the application.
+
+---
+
+## Technical Skills Demonstrated
 
 Through this project, I gained practical experience in:
 
-* Full-stack application architecture
+* Full-stack web application development
+* React component-based architecture
+* Kotlin and Ktor backend development
 * REST API design and integration
-* React component-based development
-* Backend service structure using Kotlin and Ktor
-* Working in a team-based development environment
-* Debugging integration issues across a distributed system
-* Version control using Git in a collaborative workflow
+* PostgreSQL database interaction
+* Automated testing practices
+* Continuous integration workflows
+* Collaborative software development using Git
+* Frontend-backend debugging and problem solving
 
 ---
 
 ## Project Structure
 
-```text
 Frontend/
 ├── src/
-│   ├── components/
-│   ├── context/
-│   ├── hooks/
-│   ├── pages/
-│   └── services/
+│ ├── components/
+│ ├── context/
+│ ├── hooks/
+│ ├── pages/
+│ └── services/
 
-backend/
+Backend/
 ├── src/main/kotlin/flightbooking/
 ├── src/main/resources/
 └── build.gradle.kts
-```
 
 ---
 
@@ -118,28 +169,10 @@ cd backend
 ./gradlew bootRun
 ```
 
-The backend API runs on:
+The backend API runs locally on:
 
-```
+```text
 http://localhost:8080
-```
-
----
-
-## Testing
-
-Backend tests include:
-
-* Flight schedule loading validation
-* Authentication and authorization checks
-* API routing behaviour
-* Error handling and edge cases
-
-Run tests with:
-
-```bash
-cd backend
-./gradlew test
 ```
 
 ---
